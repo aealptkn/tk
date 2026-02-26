@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#007AFF">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kaza Tespit Tutanağı">
+    <link rel="apple-touch-icon" href="./logo192.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Trafik Kaza Tespit Tutanağı</title>
+    
+    <script src="./tesseract.min.js"></script>
+    <script src="./FileSaver.min.js"></script>
+    <script src="./pdf-lib.min.js"></script>
+    <script src="./fabric.min.js"></script>
+    <link rel="stylesheet" href="./all.min.css">
+    
+    <style>
+        :root { --blue: #007AFF; --bg: #F2F2F7; --card: #FFFFFF; --gray: #8E8E93; --border: #C6C6C8; }
+        * { box-sizing: border-box; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); margin: 0; height: 100vh; display: flex; flex-direction: column; }
+        header { background: rgba(255,255,255,0.9); padding: 15px; text-align: center; border-bottom: 0.5px solid var(--border); font-weight: bold; font-size: 16px; }
+        main { flex: 1; overflow-y: auto; padding: 8px; padding-bottom: 40px; }
+        .section-title { font-size: 11px; font-weight: 700; color: var(--gray); margin: 15px 5px 5px; text-transform: uppercase; }
+        .card { background: var(--card); border-radius: 12px; overflow: hidden; margin-bottom: 10px; border: 1px solid var(--border); }
+        .row { display: flex; align-items: center; padding: 10px; border-bottom: 0.5px solid var(--border); }
+        .row:last-child { border-bottom: none; }
+        .row label { width: 125px; font-size: 11px; color: #333; font-weight: 600; }
+        .row input, .row textarea, .row select { flex: 1; border: none; outline: none; text-align: right; font-size: 12px; color: var(--blue); background: transparent; }
+        .row textarea { text-align: left; resize: none; color: #333; }
+        
+        /* İhlal Seçim Tablosu Tasarımı */
+        .violation-header { display: flex; padding: 10px; background: #f9f9f9; border-bottom: 1px solid var(--border); align-items: center; }
+        .v-row { display: flex; padding: 8px 10px; border-bottom: 0.5px solid var(--border); align-items: center; justify-content: space-between; }
+        .v-row:last-child { border-bottom: none; }
+        .v-row input[type="checkbox"] { width: 22px; height: 22px; margin: 0 5px; accent-color: #FF3B30; flex: none; }
+        .v-row label { flex: 1; text-align: center; font-size: 10px; color: #333; line-height: 1.2; font-weight: 500; margin: 0 10px; width: auto; }
+        
+        .ocr-bar { display: flex; border-bottom: 0.5px solid var(--border); background: #eef5ff; }
+        .ocr-btn { flex: 1; padding: 12px 10px; text-align: center; color: var(--blue); font-size: 11px; font-weight: 700; border: none; background: transparent; border-right: 0.5px solid var(--border); cursor:pointer;}
+        .ocr-btn:last-child { border-right: none; }
+        .ocr-btn i { font-size: 18px; display: block; margin-bottom: 6px; }
+        
+        #sketchpad { border: 1px dashed var(--border); border-radius: 8px; width: 100%; height: 220px; background: #fafafa; touch-action: none; }
+        .clear-canvas { margin-top: 8px; color: #FF3B30; background: none; border: none; font-size: 13px; font-weight: 600; cursor:pointer;}
+/*        
+        footer { padding: 12px; background: rgba(255,255,255,0.9); border-top: 0.5px solid var(--border); display: flex; gap: 10px; }
+        .btn-main { background: #107C41; color: white; border: none; flex: 2; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor:pointer;}
+        .btn-grid { background: #FF3B30; color: white; border: none; flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor:pointer;}
+*/        
+/* --- KROKİ MODALI STİLLERİ --- */
+    #krokiModal {
+        display: none; position: fixed; inset: 0; background: #222; z-index: 3000;
+        align-items: center; justify-content: center; overflow: hidden;
+    }
+    
+    /* Telefon dik (portrait) tutulduğunda ekranı zorla 90 derece yatır */
+    #krokiContent {
+        background: #fff; display: flex; flex-direction: column;
+        width: 100vw; height: 100vh;
+    }
+    @media screen and (orientation: portrait) {
+        #krokiContent {
+            transform: rotate(-90deg);
+            transform-origin: center center;
+            width: 100vh; height: 100vw;
+            position: absolute;
+            top: 50%; left: 50%;
+            margin-top: -50vw; margin-left: -50vh;
+        }
+    }
+    
+    /* Kroki Üst Menü */
+    .kroki-header { display: flex; justify-content: space-between; align-items: center; padding: calc(10px + env(safe-area-inset-top)) calc(15px + env(safe-area-inset-right)) 10px calc(15px + env(safe-area-inset-left)); border-bottom: 1px solid var(--border); background: #f9f9f9; z-index: 10; font-weight:bold; color: #333;}    
+    /* Kroki Alt Araç Çubuğu (Tüm Butonlar Görünür Şekilde) */
+    .kroki-bottom-toolbar {
+        display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: #f4f4f4; border-top: 1px solid var(--border);
+        justify-content: center; align-items: center; width: 100%; box-sizing: border-box;
+    }
+    .kroki-bottom-toolbar button {
+        padding: 8px 10px; font-size: 11px; font-weight: bold; cursor: pointer;
+        background: white; border: 1px solid #aaa; border-radius: 6px; flex-shrink: 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .kroki-bottom-toolbar button:active { background: #e0e0e0; }
+    .kroki-bottom-toolbar button.danger { background: #ffebeb; color: #cc0000; border-color: #ffb3b3; }
+    .kroki-bottom-toolbar button.success { background: #107C41; color: white; border: none; }
+    
+    .kroki-btn-group { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 4px; align-items: center; justify-content: center; border-right: 1px solid #ccc;}
+    .kroki-btn-group:last-child { border-right: none; }
+    .kroki-btn-group span { font-size: 10px; color: #666; margin-right: 2px; font-weight: bold;}
+
+/* Çizim alanı artık yatayda kaydırılabilir */
+    .kroki-canvas-container {
+        flex: 1; display: flex; align-items: center; justify-content: flex-start;
+        background: #e0e0e0; position: relative; 
+        overflow-x: auto; overflow-y: hidden; /* Sağa Sola Kaydırmayı Açar */
+        -webkit-overflow-scrolling: touch; padding: 15px;
+    }
+    /* Beyaz kağıdı dikeyde ortalamak için */
+    .kroki-canvas-container .canvas-container {
+        margin: auto; 
+    }
+
+    canvas { box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+
+/* --- YENİ EKLENEN MENÜ VE LİSTE STİLLERİ --- */
+    header { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.9); padding: calc(15px + env(safe-area-inset-top)) 15px 15px 15px; border-bottom: 0.5px solid var(--border); font-weight: bold; font-size: 16px; position: relative; }
+    .menu-btn { background: none; border: none; font-size: 20px; color: var(--blue); cursor: pointer; padding: 0 5px; }
+    .dropdown { display: none; position: absolute; top: calc(55px + env(safe-area-inset-top)); right: 15px; background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1px solid var(--border); overflow: hidden; z-index: 1001; min-width: 150px; }
+    .dropdown button { display: block; width: 100%; text-align: left; padding: 12px 15px; border: none; background: none; font-size: 14px; border-bottom: 0.5px solid var(--border); cursor: pointer; font-weight: 500; color: #333; }
+    .dropdown button:last-child { border-bottom: none; }
+    .dropdown button i { margin-right: 8px; width: 16px; text-align: center; color: var(--blue); }
+    .dropdown button.danger { color: #FF3B30; }
+    .dropdown button.danger i { color: #FF3B30; }
+
+    /* Kayıt Listesi Modalı */
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
+    .modal-content { background: #fff; width: 100%; max-width: 400px; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh; }
+    .modal-header { padding: calc(15px + env(safe-area-inset-top)) 15px 15px 15px; text-align: center; border-bottom: 1px solid var(--border); font-weight: bold; font-size: 16px; position: relative; }
+    .modal-close { position: absolute; right: 15px; top: calc(15px + env(safe-area-inset-top)); background: none; border: none; font-size: 18px; color: #FF3B30; cursor: pointer; }
+    .list-container { padding: 10px; overflow-y: auto; flex: 1; }
+    .record-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; }
+    .record-item:last-child { border-bottom: none; }
+    .record-item span { flex: 1; font-size: 13px; font-weight: 500; color: var(--blue); cursor: pointer; }
+    .record-item .del-btn { background: none; border: none; color: #FF3B30; font-size: 16px; cursor: pointer; padding: 5px; }
+    
+
+    #loader { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.95); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #107C41; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .divider { height: 3px; background: #F2F2F7; width: 100%; }
+
+    /* İNTRO VE OFFLINE MESAJ STİLLERİ */
+    #intro-screen {
+        position: fixed; inset: 0; background: #2c3e50; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: white; transition: opacity 0.8s ease-out;
+    }
+    .intro-icons {
+        font-size: 40px; display: flex; gap: 20px; margin-bottom: 20px;
+    }
+    .intro-icons i:nth-child(1) { color: #FF3B30; animation: bounce 1.5s infinite; }
+    .intro-icons i:nth-child(2) { color: #FFCC00; animation: bounce 1.5s infinite 0.2s; }
+    .intro-icons i:nth-child(3) { color: #34C759; animation: bounce 1.5s infinite 0.4s; }
+    .intro-icons i:nth-child(4) { color: #007AFF; animation: bounce 1.5s infinite 0.6s; }
+    .intro-title { font-size: 24px; font-weight: bold; letter-spacing: 1px; margin-bottom: 5px; }
+    .intro-copyright { position: absolute; bottom: 20px; font-size: 11px; opacity: 0.7; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+    
+    #offline-toast {
+        position: fixed; bottom: -50px; left: 50%; transform: translateX(-50%);
+        background: #34C759; color: white; padding: 10px 20px; border-radius: 20px;
+        font-size: 13px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        z-index: 8000; transition: bottom 0.5s ease-out;
+    }
+
+    </style>
+</head>
+<body>
+
+<div id="intro-screen">
+    <div class="intro-icons">
+        <i class="fas fa-traffic-light"></i>
+        <i class="fas fa-car-crash"></i>
+        <i class="fas fa-wheelchair"></i> <i class="fas fa-bullhorn"></i> </div>
+    <div class="intro-title">Kaza TespitTutanağı PRO</div>
+    <div style="font-size: 13px; color: #aaa;">Hazırlanıyor...</div>
+    <div class="intro-copyright">Copyright © @lptekin</div>
+</div>
+
+<div id="offline-toast"><i class="fas fa-wifi"></i> Uygulama artık çevrimdışı kullanılabilir!</div>
+
+<div id="loader"><div class="spinner"></div><p id="l-msg" style="margin-top:15px; font-weight:600; color:#107C41;">İşlem Yapılıyor...</p></div>
+
+<header>
+    <div></div> <span>Dijital Kaza Tespit Tutanağı </span>
+    <button class="menu-btn" onclick="toggleMenu()"><i class="fas fa-ellipsis-v"></i></button>
+    <div id="dropdownMenu" class="dropdown">
+        <button onclick="saveTutanak()"><i class="fas fa-save"></i> Tutanağı Kaydet</button>
+        <button onclick="showList()"><i class="fas fa-list"></i> Tutanak Listesi</button>
+        <button onclick="importTutanak()"><i class="fas fa-plus"></i> Tutanak Yükle</button>
+        <button onclick="exportTutanakPDF()"><i class="fas fa-file-pdf"></i> PDF İndir</button>
+        <button onclick="openKrokiModal()"><i class="fas fa-road"></i> Kroki Hazırla</button>
+        
+        <div style="border-top: 1px solid #eee; margin: 5px 0;"></div>
+        
+        <button onclick="shareVehicleFromForm('A')"><i class="fas fa-share-square" style="color:#007AFF;"></i> A Aracını Paylaş</button>
+        <button onclick="importVehicleToForm('A')"><i class="fas fa-download" style="color:#007AFF;"></i> A Aracı Yükle</button>
+        
+        <button onclick="shareVehicleFromForm('B')"><i class="fas fa-share-square" style="color:#FF3B30;"></i> B Aracını Paylaş</button>
+        <button onclick="importVehicleToForm('B')"><i class="fas fa-download" style="color:#FF3B30;"></i> B Aracı Yükle</button>
+
+        <div style="border-top: 1px solid #eee; margin: 5px 0;"></div>
+        
+        <button class="danger" onclick="clearForm()"><i class="fas fa-trash-alt"></i> Formu Temizle</button>
+    </div>
+</header>
+
+<main>
+    <input type="file" id="ocr-kimlik" hidden accept="image/*" onchange="runOCR(this, currentVehicle, 'kimlik')">
+    <input type="file" id="ocr-ruhsat" hidden accept="image/*" onchange="runOCR(this, currentVehicle, 'ruhsat')">
+
+    <div class="section-title">KAZA ZAMANI VE YERİ</div>
+    <div class="card">
+        <div class="row"><label>Tarih/Saat</label><input type="datetime-local" id="k_tarih"></div>
+        <div class="row"><label>İl</label><input type="text" id="k_il" placeholder="İl"></div>
+        <div class="row"><label>İlçe</label><input type="text" id="k_ilce" placeholder="İlçe"></div>
+        <div class="row"><label>Semt</label><input type="text" id="k_semt" placeholder="Semt"></div>
+        <div class="row"><label>Mahalle</label><input type="text" id="k_mahalle" placeholder="Mahalle"></div>
+        <div class="row"><label>Cadde</label><input type="text" id="k_cadde" placeholder="Cadde"></div>
+        <div class="row"><label>Sokak</label><input type="text" id="k_sokak" placeholder="Sokak"></div>
+    </div>
+
+    <div class="section-title">GÖRGÜ TANIKLARI</div>
+    <div class="card">
+        <div class="row"><label>1. Tanık Adı</label><input type="text" id="g1_ad" placeholder="Ad Soyad"></div>
+        <div class="row"><label>1. Tanık Tel</label><input type="text" id="g1_tel" placeholder="Telefon"></div>
+        <div class="row"><label>1. Tanık Adres</label><textarea id="g1_adres" rows="2" placeholder="Adres"></textarea></div>
+        <div class="row"><label>2. Tanık Adı</label><input type="text" id="g2_ad" placeholder="Ad Soyad"></div>
+        <div class="row"><label>2. Tanık Tel</label><input type="text" id="g2_tel" placeholder="Telefon"></div>
+        <div class="row"><label>2. Tanık Adres</label><textarea id="g2_adres" rows="2" placeholder="Adres"></textarea></div>
+    </div>
+
+    <div class="section-title">ARAÇ A</div>
+    <div class="card">
+        <div class="ocr-bar">
+            <button class="ocr-btn" onclick="triggerOCR('A', 'kimlik')"><i class="fas fa-id-card"></i>TC'den Çek</button>
+            <button class="ocr-btn" onclick="triggerOCR('A', 'ruhsat')"><i class="fas fa-car"></i>Ruhsattan Çek</button>
+        </div>
+    <div class="section-title">4- Sürücü Bilgileri</div>
+        <div class="card">  
+        <div class="row"><label>Adı Soyadı:</label><input type="text" id="A_ad" placeholder="Ad Soyad"></div>
+        <div class="row"><label>T.C. Kimlik No:</label><input type="text" id="A_tc" placeholder="11 Haneli"></div>
+        <div class="row"><label>Sürücü Belge No. ve Sınıfı:</label><input type="text" id="A_belge" placeholder="Belge No/Sınıfı"></div>
+        <div class="row"><label>Alındığı Yer (il/İlçe):</label><input type="text" id="A_belge_yer" placeholder="İl/İlçe"></div>
+        <div class="row"><label>Adres:</label><textarea id="A_adres" rows="3" placeholder="Adres"></textarea></div>
+        <div class="row"><label>Cep Tel:</label><input type="text" id="A_tel" placeholder="05XX"></div>
+        <div class="row"><label>E-posta:</label><input type="text" id="A_eposta" placeholder="E-posta"></div>
+    </div>
+    <div class="section-title">5- Araç Blgileri</div>  
+        <div class="card">
+        <div class="row"><label>Şasi No:</label><input type="text" id="A_sase" placeholder="VIN Numarası"></div>
+        <div class="row"><label>Marka ve Modeli:</label><input type="text" id="A_marka" placeholder="Örn: Renault Megane"></div>
+        <div class="row"><label>Plaka:</label><input type="text" id="A_plaka" placeholder="34 ABC 123"></div>
+        <div class="row"><label>Kullanım Şekli:</label><input type="text" id="A_kullanim" placeholder="Örn: Hususi"></div>
+    </div>
+    <div class="section-title">6- Trafik Sigortası Poliçe Bilgileri</div>      
+        <div class="card">
+        <div class="row"><label>Sigortalının Adı Soyadı</label><input type="text" id="As_sigortali_ad" placeholder="Ruhsat Sahibi"></div>
+        <div class="row"><label>Sigortalı Cep Tel:</label><input type="text" id="As_tel" placeholder="05XX"></div>
+        <div class="row"><label>Sigortalı E-posta:</label><input type="text" id="As_eposta" placeholder="E-posta"></div>
+        <div class="row"><label>T.C. Kimlik/Vergi No:</label><input type="text" id="As_sigortali_tc" placeholder="TC/VKN"></div>
+        <div class="row"><label>Sigorta Şirketinin Ünvanı:</label><input type="text" id="As_sigorta" placeholder="Şirket Ünvanı"></div>
+        <div class="row"><label>Acente No:</label><input type="text" id="As_acente" placeholder="Acente No"></div>
+        <div class="row"><label>Poliçe No:</label><input type="text" id="As_police" placeholder="Poliçe Numarası"></div>
+        <div class="row"><label>TRAMER Belge No:</label><input type="text" id="As_tramer" placeholder="Tramer Belge No"></div>
+        <div class="row"><label>Poliçenin Başlangıç Bitiş Tarihi:</label><input type="text" id="As_police_tarih" placeholder="Başlangıç-Bitiş"></div>
+
+        <div class="row"><label style="color:#007AFF;">Araç Tipi (Çizim)</label>
+            <select id="A_arac_tipi">
+                <option value="Otomobil">Otomobil</option>
+                <option value="Motosiklet">Motosiklet</option>
+                <option value="Kamyon">Kamyon/Otobüs</option>
+            </select>
+        </div>
+        <div class="row"><label style="color:red;">İlk Darbe Yeri</label>
+            <select id="A_darbe"> <option value="">Seçiniz</option>
+                <option value="Ön">Ön</option>
+                <option value="Sağ Ön">Sağ Ön</option>
+                <option value="Sol Ön">Sol Ön</option>
+                <option value="Sağ Üst">Sağ Üst</option>
+                <option value="Sol Üst">Sol Üst</option>
+                <option value="Sağ Orta">Sağ Orta</option>
+                <option value="Sol Orta">Sol Orta</option>
+                <option value="Sağ Alt">Sağ Alt</option>
+                <option value="Sol Alt">Sol Alt</option>
+                <option value="Arka">Arka</option>
+                <option value="Sağ Arka">Sağ Arka</option>
+                <option value="Sol Arka">Sol Arka</option>
+            </select>
+        </div>
+        <div class="divider"></div>
+    </div>
+
+    <div class="section-title">8- Araç Yeşil Kart (Green Kart) Belgesine Sahipse Doldurulacak Bölüm</div>     
+        <div class="card">
+        <div class="row"><label>Yeşil Kart No</label><input type="text" id="A_yesilkart" placeholder="Green Card"></div>
+        <div class="row"><label>Ülke</label><input type="text" id="A_ulke" placeholder="Ülke"></div>
+        <div class="row"><label>Pasaport No</label><input type="text" id="A_pasaport" placeholder="Pasaport No"></div>
+    </div>
+
+    <div class="section-title">7- KURAL İHLALLERİ İŞARETLEME (X)</div>
+    <div class="card" style="padding:0;">
+        <div class="violation-header">
+            <div style="width:30px; text-align:center; font-weight:bold; color:#FF3B30;">ARAÇ A</div>
+            <div style="flex:1; text-align:center; font-weight:bold; font-size:11px;">İHLAL SEBEBİ</div>
+            <div style="width:30px; text-align:center; font-weight:bold; color:#FF3B30;">ARAÇ B</div>
+        </div>
+        <div class="v-row"><input type="checkbox" id="v_13_A"><label>Kırmızı ışık ihlalinde bulunmak</label><input type="checkbox" id="v_13_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_14_A"><label>Taşıt giremez işareti bulunan karayoluna girmek</label><input type="checkbox" id="v_14_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_15_A"><label>Karşı yönden gelen trafiğin kullandığı yola girmek</label><input type="checkbox" id="v_15_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_16_A"><label>Geçme yasağı olan yerde geçiş yapmak</label><input type="checkbox" id="v_16_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_17_A"><label>Kavşakta geçiş önceliğine uymamak</label><input type="checkbox" id="v_17_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_18_A"><label>Yetkili memurun dur işaretinde geçmek</label><input type="checkbox" id="v_18_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_19_A"><label>Aynı şeritte giderken arkadan çarpmak</label><input type="checkbox" id="v_19_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_21_A"><label>Sağa dönüş kurallarına uymamak</label><input type="checkbox" id="v_21_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_22_A"><label>Sola dönüş kurallarına uymamak</label><input type="checkbox" id="v_22_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_23_A"><label>Geri manevra kurallarına uymamak</label><input type="checkbox" id="v_23_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_24_A"><label>Geçme (sollama) kurallarına uymamak</label><input type="checkbox" id="v_24_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_25_A"><label>Geçiş önceliğine uymamak</label><input type="checkbox" id="v_25_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_26_A"><label>Parketme kurallarına uymamak</label><input type="checkbox" id="v_26_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_27_A"><label>Duraklama Kurallarına uymamak</label><input type="checkbox" id="v_27_B"></div>
+        <div class="v-row"><input type="checkbox" id="v_28_A"><label>Kurallara uygun park edilmiş araca çarpmak</label><input type="checkbox" id="v_28_B"></div>
+    </div>
+
+    <div class="section-title">Araç Hız Fren</div>
+    <div class="card" style="padding:0;">
+        <div class="section-title">A Araç için</div>    
+        <div class="row"><label>Hız (km/s)</label><input type="number" id="A_hiz" placeholder="Hızınız"></div>
+        <div class="row"><label>Fren İzi (m)</label><input type="number" id="A_fren" placeholder="Fren İzi"></div>
+        <div class="section-title">B Araç için</div>
+        <div class="row"><label>Hız (km/s)</label><input type="number" id="A_hiz" placeholder="Hızınız"></div>
+        <div class="row"><label>Fren İzi (m)</label><input type="number" id="A_fren" placeholder="Fren İzi"></div>        
+    </div>    
+
+
+    <div class="section-title">ARAÇ B</div>
+    <div class="card">
+        <div class="ocr-bar">
+            <button class="ocr-btn" onclick="triggerOCR('B', 'kimlik')"><i class="fas fa-id-card"></i>TC'den Çek</button>
+            <button class="ocr-btn" onclick="triggerOCR('B', 'ruhsat')"><i class="fas fa-car"></i>Ruhsattan Çek</button>
+        </div>
+    <div class="section-title">4- Sürücü Bilgileri</div>
+        <div class="card">  
+        <div class="row"><label>Adı Soyadı:</label><input type="text" id="B_ad" placeholder="Ad Soyad"></div>
+        <div class="row"><label>T.C. Kimlik No:</label><input type="text" id="B_tc" placeholder="11 Haneli"></div>
+        <div class="row"><label>Sürücü Belge No. ve Sınıfı:</label><input type="text" id="B_belge" placeholder="Belge No/Sınıfı"></div>
+        <div class="row"><label>Alındığı Yer (il/İlçe):</label><input type="text" id="B_belge_yer" placeholder="İl/İlçe"></div>
+        <div class="row"><label>Adres:</label><textarea id="B_adres" rows="3" placeholder="Adres"></textarea></div>
+        <div class="row"><label>Cep Tel:</label><input type="text" id="B_tel" placeholder="05XX"></div>
+        <div class="row"><label>E-posta:</label><input type="text" id="B_eposta" placeholder="E-posta"></div>
+    </div>
+    <div class="section-title">5- Araç Blgileri</div>  
+        <div class="card">
+        <div class="row"><label>Şasi No:</label><input type="text" id="B_sase" placeholder="VIN Numarası"></div>
+        <div class="row"><label>Marka ve Modeli:</label><input type="text" id="B_marka" placeholder="Örn: Renault Megane"></div>
+        <div class="row"><label>Plaka:</label><input type="text" id="B_plaka" placeholder="35 ABC 123"></div>
+        <div class="row"><label>Kullanım Şekli:</label><input type="text" id="B_kullanim" placeholder="Örn: Hususi"></div>
+    </div>
+    <div class="section-title">6- Trafik Sigortası Poliçe Bilgileri</div>      
+        <div class="card">
+        <div class="row"><label>Sigortalının Adı Soyadı</label><input type="text" id="Bs_sigortali_ad" placeholder="Ruhsat Sahibi"></div>
+        <div class="row"><label>Sigortalı Cep Tel:</label><input type="text" id="Bs_tel" placeholder="05XX"></div>
+        <div class="row"><label>Sigortalı E-posta:</label><input type="text" id="Bs_eposta" placeholder="E-posta"></div>
+        <div class="row"><label>T.C. Kimlik/Vergi No:</label><input type="text" id="Bs_sigortali_tc" placeholder="TC/VKN"></div>
+        <div class="row"><label>Sigorta Şirketinin Ünvanı:</label><input type="text" id="Bs_sigorta" placeholder="Şirket Ünvanı"></div>
+        <div class="row"><label>Acente No:</label><input type="text" id="Bs_acente" placeholder="Acente No"></div>
+        <div class="row"><label>Poliçe No:</label><input type="text" id="Bs_police" placeholder="Poliçe Numarası"></div>
+        <div class="row"><label>TRAMER Belge No:</label><input type="text" id="Bs_tramer" placeholder="Tramer Belge No"></div>
+        <div class="row"><label>Poliçenin Başlangıç Bitiş Tarihi:</label><input type="text" id="Bs_police_tarih" placeholder="Başlangıç-Bitiş"></div>
+
+        <div class="row"><label style="color:#007AFF;">Araç Tipi (Çizim)</label>
+            <select id="B_arac_tipi">
+                <option value="Otomobil">Otomobil</option>
+                <option value="Motosiklet">Motosiklet</option>
+                <option value="Kamyon">Kamyon/Otobüs</option>
+            </select>
+        </div>
+        <div class="row"><label style="color:red;">İlk Darbe Yeri</label>
+            <select id="B_darbe"> <option value="">Seçiniz</option>
+                <option value="Ön">Ön</option>
+                <option value="Sağ Ön">Sağ Ön</option>
+                <option value="Sol Ön">Sol Ön</option>
+                <option value="Sağ Üst">Sağ Üst</option>
+                <option value="Sol Üst">Sol Üst</option>
+                <option value="Sağ Orta">Sağ Orta</option>
+                <option value="Sol Orta">Sol Orta</option>
+                <option value="Sağ Alt">Sağ Alt</option>
+                <option value="Sol Alt">Sol Alt</option>
+                <option value="Arka">Arka</option>
+                <option value="Sağ Arka">Sağ Arka</option>
+                <option value="Sol Arka">Sol Arka</option>
+            </select>
+        </div>
+        <div class="divider"></div>
+    </div>
+
+    <div class="section-title">8- Araç Yeşil Kart (Green Kart) Belgesine Sahipse Doldurulacak Bölüm</div>     
+        <div class="card">
+        <div class="row"><label>Yeşil Kart No</label><input type="text" id="B_yesilkart" placeholder="Green Card"></div>
+        <div class="row"><label>Ülke</label><input type="text" id="B_ulke" placeholder="Ülke"></div>
+        <div class="row"><label>Pasaport No</label><input type="text" id="B_pasaport" placeholder="Pasaport No"></div>
+    </div>
+
+    <div class="section-title">11- SÜRÜCÜ GÖRÜŞLERİ</div>
+        <div class="card">
+            <div class="row" style="flex-direction: column; align-items: stretch;">
+                <label style="margin-bottom:5px; color:var(--blue);">Araç A Sürücüsü:</label>
+                <textarea id="A_gorus" rows="3" style="width: 100%; padding: 5px;" maxlength="280" placeholder="Kaza nasıl oldu?"></textarea>
+            </div>
+            <div class="row" style="flex-direction: column; align-items: stretch;">
+                <label style="margin-bottom:5px; color:var(--blue);">Araç B Sürücüsü:</label>
+                <textarea id="B_gorus" rows="3" style="width: 100%; padding: 5px;" maxlength="280" placeholder="Kaza nasıl oldu?"></textarea>
+            </div>
+        </div>
+
+
+</main>
+
+<div id="listModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            Kayıtlı Tutanaklar
+            <button class="modal-close" onclick="document.getElementById('listModal').style.display='none'"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="savedListContainer" class="list-container">
+        </div>
+    </div>
+</div>
+
+<div id="krokiListModal" class="modal" style="z-index: 5000;">
+    <div class="modal-content">
+        <div class="modal-header">
+            Kayıtlı Krokiler
+            <button class="modal-close" onclick="document.getElementById('krokiListModal').style.display='none'"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="savedKrokiListContainer" class="list-container">
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // --- 3 NOKTA MENÜ VE KAYIT SİSTEMİ MOTORU ---
+    // ==========================================
+    
+    // Menü Aç/Kapat
+    function toggleMenu() {
+        const menu = document.getElementById('dropdownMenu');
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    // Dışarı tıklayınca menüyü kapat
+    window.onclick = function(event) {
+        if (!event.target.matches('.fa-ellipsis-v') && !event.target.matches('.menu-btn')) {
+            const menu = document.getElementById('dropdownMenu');
+            if (menu && menu.style.display === 'block') menu.style.display = 'none';
+            
+            const krokiMenu = document.getElementById('krokiDropdownMenu');
+            if (krokiMenu && krokiMenu.style.display === 'block') krokiMenu.style.display = 'none';
+        }
+    }
+
+    function toggleKrokiMenu() {
+        const menu = document.getElementById('krokiDropdownMenu');
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    // Formu Temizle (Varsayılana Döndür)
+    function clearForm() {
+        if(!confirm("Tüm verileri temizlemek istediğinize emin misiniz?")) return;
+        
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            if (el.id && el.type !== 'file') {
+                if (el.type === 'checkbox') el.checked = false;
+                else el.value = '';
+            }
+        });
+        savedKrokiImage = null; // Hazırlanan yeni krokiyi hafızadan temizler
+        document.getElementById('dropdownMenu').style.display = 'none';
+    }
+
+    // Verileri LocalStorage'a Kaydet
+    function saveTutanak() {
+        const id = Date.now().toString();
+        const plakaA = document.getElementById('A_plaka').value || "Belirsiz";
+        const tarih = new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+        const recordName = `Araç A: ${plakaA} - ${tarih}`;
+
+        const data = {};
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            if (el.id && el.type !== 'file') {
+                data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+            }
+        });
+        
+        const canvasData = savedKrokiImage;
+        const record = { id, name: recordName, data, canvasData };
+        
+        let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+        savedList.push(record);
+        localStorage.setItem('tutanakList', JSON.stringify(savedList));
+        
+        document.getElementById('dropdownMenu').style.display = 'none';
+        alert('Tutanak başarıyla cihaza kaydedildi.');
+    }
+
+    // Kayıtlı Listeyi Aç
+    function showList() {
+        const modal = document.getElementById('listModal');
+        const listContainer = document.getElementById('savedListContainer');
+        let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+        
+        listContainer.innerHTML = '';
+        if(savedList.length === 0) {
+            listContainer.innerHTML = '<p style="text-align:center; color:#8E8E93; margin-top:20px;">Henüz kaydedilmiş tutanak yok.</p>';
+        } else {
+            savedList.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'record-item';
+                div.innerHTML = `
+                    <span onclick="loadTutanak('${item.id}')"><i class="fas fa-file-alt" style="margin-right:8px;"></i> ${item.name}</span>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="del-btn" style="color: var(--blue);" onclick="shareTutanak('${item.id}')"><i class="fas fa-share-alt"></i></button>
+                        <button class="del-btn" onclick="deleteTutanak('${item.id}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+        
+        document.getElementById('dropdownMenu').style.display = 'none';
+        modal.style.display = 'flex';
+    }
+
+    // Seçilen Kaydı Form'a Yükle
+    function loadTutanak(id) {
+        let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+        const record = savedList.find(r => r.id === id);
+        if(!record) return;
+
+        // İnputları doldur
+        Object.keys(record.data).forEach(key => {
+            const el = document.getElementById(key);
+            if(el) {
+                if(el.type === 'checkbox') el.checked = record.data[key];
+                else el.value = record.data[key];
+            }
+        });
+
+    // Hazırlanan krokiyi belleğe (PDF'e basılmak üzere) geri yükle
+        savedKrokiImage = record.canvasData || null;
+
+        document.getElementById('listModal').style.display = 'none';
+        alert('Tutanak verileri forma yüklendi.');
+    }
+
+    // Kayıt Sil
+    function deleteTutanak(id) {
+        if(!confirm("Bu kaydı kalıcı olarak silmek istediğinize emin misiniz?")) return;
+        let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+        savedList = savedList.filter(r => r.id !== id);
+        localStorage.setItem('tutanakList', JSON.stringify(savedList));
+        showList(); // Listeyi yenile
+    }
+
+
+    // Paylaşılan Kaydı Ekle
+    function importTutanak() {
+        document.getElementById('dropdownMenu').style.display = 'none';
+        const inputData = prompt("Size gönderilen kaza kaydı verisini buraya yapıştırın:");
+        
+        if (!inputData) return;
+
+        try {
+            const newRecord = JSON.parse(inputData);
+ 
+            // Verinin geçerli bir tutanak olup olmadığını basitçe kontrol et
+            if (!newRecord.data) throw new Error("Geçersiz format");
+
+            // Çakışmaları önlemek için yeni ID ver ve ismine paylaşıldığını belirt
+            newRecord.id = Date.now().toString();
+            newRecord.name = newRecord.name + " (İçe Aktarıldı)";
+
+            let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+            savedList.push(newRecord);
+            localStorage.setItem('tutanakList', JSON.stringify(savedList));
+     
+            alert("Paylaşılan tutanak başarıyla listeye eklendi.");
+        } catch (e) {
+            alert("Hatalı veri formatı! Lütfen geçerli bir tutanak verisi yapıştırın.");
+        }
+    }
+
+    // ==========================================
+    // --- IZGARA (GRID) AYARLARI KONTROL PANELİ ---
+    // ==========================================
+    const GRID_CONFIG = {
+        x_step: 1,          // Sütun (Dikey çizgi) aralığı (Örn: 10, 15, 20)
+        y_step: 1,          // Satır (Yatay çizgi) aralığı (Örn: 5, 10, 15)
+        kavsak_cizgisi: 500,  // Kaç pikselde bir kalın çizgi çekilsin? (Örn: 50, 60)
+        font_size: 1,        // X ve Y rakamlarının büyüklüğü
+        text_offset_x: 1,    // X yazısının çizgiye olan sağ/sol uzaklığı
+        text_offset_y: 1     // Y yazısının çizgiye olan alt/üst uzaklığı
+    };
+
+    // --- YARDIMCI KISAYOLLAR ---
+    const val = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
+    const fixTurkishChars = (text) => {
+        if (!text) return "";
+        const map = { 'ğ':'g', 'Ğ':'G', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ç':'c', 'Ç':'C', 'ö':'o', 'Ö':'O', 'ü':'u', 'Ü':'U' };
+        return text.toString().replace(/[ğĞşŞıİçÇöÖüÜ]/g, letter => map[letter]);
+    };
+
+    // --- OCR MOTORU ---
+    let currentVehicle = 'A'; let currentDocType = 'kimlik';
+    function triggerOCR(vehicle, docType) { currentVehicle = vehicle; currentDocType = docType; document.getElementById(`ocr-${docType}`).click(); }
+    
+    async function runOCR(input, vehicle, docType) { 
+        if(!input.files[0]) return;
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('l-msg').innerText = 'Evrak Okunuyor...';
+        try {
+            // YENİ SİSTEM: İnternete çıkmasını engelleyip yerel dosyaları gösteriyoruz
+            const worker = await Tesseract.createWorker('tur', 1, {
+                workerPath: './worker.min.js',
+                corePath: './tesseract-core.wasm.js',
+                langPath: './' // tur.traineddata.gz dosyasının olduğu klasör (ana dizin)
+            });
+
+            const { data: { text } } = await worker.recognize(input.files[0]);
+
+            if (docType === 'kimlik') {
+                const tcMatch = text.match(/\b[1-9][0-9]{10}\b/);
+                if(tcMatch) document.getElementById(`${vehicle}_tc`).value = tcMatch[0];
+            } else {
+                const plateMatch = text.match(/\b[0-9]{2}\s?[A-Z]{1,3}\s?[0-9]{2,4}\b/);
+                if(plateMatch) document.getElementById(`${vehicle}_plaka`).value = plateMatch[0].replace(/\s/g, '').toUpperCase();
+            }
+            
+            await worker.terminate(); // İşlem bitince belleği temizle ki telefon kasmasın
+
+        } catch (e) { 
+            console.error(e);
+            alert("Okuma başarısız. Hata: " + e.message); 
+        }
+        document.getElementById('loader').style.display = 'none'; input.value = "";
+    }
+
+
+    // --- 1. KOORDİNAT BULUCU (IZGARA) MOTORU ---
+    async function createGridPDF() {
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('l-msg').innerText = "Izgara Çiziliyor...";
+        try {
+            const existingPdfBytes = await fetch('./bos-tutanak.pdf').then(res => res.arrayBuffer());
+            const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
+            const page = pdfDoc.getPages()[0]; 
+            const { width, height } = page.getSize();
+            const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+            
+            for (let x = 0; x < width; x += GRID_CONFIG.x_step) {
+                let isMajor = (x % GRID_CONFIG.kavsak_cizgisi === 0);
+                page.drawLine({ start: { x, y: 0 }, end: { x, y: height }, thickness: isMajor ? 0.6 : 0.2, color: PDFLib.rgb(1, 0, 0), opacity: 0.6 });
+                page.drawText(`X:${x}`, { x: x + GRID_CONFIG.text_offset_x, y: height - 15, size: GRID_CONFIG.font_size, font, color: PDFLib.rgb(1, 0, 0) });
+            }
+            
+            for (let y = 0; y < height; y += GRID_CONFIG.y_step) {
+                let isMajor = (y % GRID_CONFIG.kavsak_cizgisi === 0);
+                page.drawLine({ start: { x: 0, y }, end: { x: width, y }, thickness: isMajor ? 0.6 : 0.2, color: PDFLib.rgb(0, 0, 1), opacity: 0.6 });
+                page.drawText(`Y:${y}`, { x: 5, y: y + GRID_CONFIG.text_offset_y, size: GRID_CONFIG.font_size, font, color: PDFLib.rgb(0, 0, 1) });
+            }
+            
+            const pdfBytes = await pdfDoc.save();
+            saveAs(new Blob([pdfBytes], { type: 'application/pdf' }), "Koordinat_Haritasi.pdf");
+        } catch (error) { alert("Hata: " + error.message); } finally { document.getElementById('loader').style.display = 'none'; }
+    }
+
+    // --- 2. RESMİ PDF ÇIKTISI MOTORU (TÜM ALANLAR EKSİKSİZ) ---
+    async function exportTutanakPDF() {
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('l-msg').innerText = "Tüm Veriler PDF'e İşleniyor...";
+        try {
+            const existingPdfBytes = await fetch('./bos-tutanak.pdf').then(res => res.arrayBuffer());
+            const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
+            const page = pdfDoc.getPages()[0]; 
+            const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+            const fontBold = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+
+            const isCh = (id) => { const el = document.getElementById(id); return (el && el.checked); };
+
+            // ==============================================================
+            // BÜTÜN METİN ALANLARI (X ve Y DEĞERLERİNİ HARİTADAN DÜZELTİN)
+            // ==============================================================
+            const textFields = [
+                // 1. KAZA YERİ VE TARİHİ
+                { text: val('k_tarih').split('T')[0], x: 25, y: 699, size: 8 }, 
+                { text: val('k_tarih').split('T')[1], x: 105, y: 699, size: 8 }, 
+                { text: val('k_il'), x: 262, y: 708, size: 8 },
+                { text: val('k_ilce'), x: 262, y: 699, size: 8 },
+                { text: val('k_semt'), x: 262, y: 690, size: 8 },
+                { text: val('k_mahalle'), x: 418, y: 708, size: 8 },
+                { text: val('k_cadde'), x: 418, y: 699, size: 8 },
+                { text: val('k_sokak'), x: 418, y: 690, size: 8 },
+                
+                // 2. GÖRGÜ TANIKLARI
+                { text: val('g1_ad'), x: 21, y: 657, size: 7 },
+                { text: val('g1_tel'), x: 476, y: 657, size: 7 },
+                { text: val('g1_adres'), x: 130, y: 657, size: 7 },
+                { text: val('g2_ad'), x: 21, y: 647, size: 7 },
+                { text: val('g2_tel'), x: 476, y: 647, size: 7 },
+                { text: val('g2_adres'), x: 130, y: 647, size: 7 },
+                
+                
+                // 3. ARAÇ A BİLGİLERİ (SOL SÜTUN)
+                { text: val('A_ad'), x: 58, y: 601, size: 8 },
+                { text: val('A_tc'), x: 70, y: 591, size: 8 },
+                { text: val('A_belge'), x: 106, y: 579, size: 8 },
+                { text: val('A_belge_yer'), x: 79, y: 567, size: 8 },
+                { text: val('A_adres'), x: 37, y: 556, size: 6 },
+                { text: val('A_tel'), x: 51, y: 545, size: 8 },
+                { text: val('A_eposta'), x: 51, y: 533, size: 8 },
+                
+                { text: val('A_sase'), x: 50, y: 510, size: 8 },
+                { text: val('A_marka'), x: 73, y: 498, size: 8 },
+                { text: val('A_plaka'), x: 73, y: 487, size: 8, isBold: true },
+                { text: val('A_kullanim'), x: 73, y: 476, size: 8 },
+                
+                // 4. ARAÇ A SİGORTA BİLGİLERİ
+                { text: val('As_sigortali_ad'), x: 91, y: 452, size: 8 },
+                { text: val('As_tel'), x: 91, y: 440, size: 8 },
+                { text: val('As_eposta'), x: 91, y: 429, size: 8 },
+                { text: val('As_sigortali_tc'), x: 91, y: 418, size: 8 },
+                { text: val('As_sigorta'), x: 98, y: 406, size: 8 },
+                { text: val('As_acente'), x: 83, y: 395, size: 8 },
+                { text: val('As_police'), x: 83, y: 383, size: 8 },
+                { text: val('As_tramer'), x: 83, y: 371, size: 8 },
+                { text: val('As_police_tarih'), x: 117, y: 360, size: 6 },
+
+
+
+                // 5. ARAÇ B BİLGİLERİ (SAĞ SÜTUN)
+                { text: val('B_ad'), x: 441, y: 601, size: 8 },
+                { text: val('B_tc'), x: 452, y: 591, size: 8 },
+                { text: val('B_belge'), x: 488, y: 579, size: 8 },
+                { text: val('B_belge_yer'), x: 462, y: 567, size: 8 },
+                { text: val('B_adres'), x: 421, y: 556, size: 6 },
+                { text: val('B_tel'), x: 435, y: 545, size: 8 },
+                { text: val('B_eposta'), x: 435, y: 533, size: 8 },
+                
+                { text: val('B_sase'), x: 431, y: 510, size: 8 },
+                { text: val('B_marka'), x: 455, y: 498, size: 8 },
+                { text: val('B_plaka'), x: 455, y: 487, size: 8, isBold: true },
+                { text: val('B_kullanim'), x: 455, y: 476, size: 8 },
+                
+                // 4. ARAÇ B SİGORTA BİLGİLERİ
+                { text: val('Bs_sigortali_ad'), x: 475, y: 452, size: 8 },
+                { text: val('Bs_tel'), x: 475, y: 440, size: 8 },
+                { text: val('Bs_eposta'), x: 475, y: 429, size: 8 },
+                { text: val('Bs_sigortali_tc'), x: 475, y: 418, size: 8 },
+                { text: val('Bs_sigorta'), x: 481, y: 406, size: 8 },
+                { text: val('Bs_acente'), x: 465, y: 395, size: 8 },
+                { text: val('Bs_police'), x: 465, y: 383, size: 8 },
+                { text: val('Bs_tramer'), x: 465, y: 371, size: 8 },
+                { text: val('Bs_police_tarih'), x: 499, y: 360, size: 6 },
+
+                // 7. ORTA SÜTUN (HIZ, FREN, YEŞİL KART V.B)
+                { text: val('A_hiz'), x: 194, y: 419, size: 8 },
+                { text: val('B_hiz'), x: 355, y: 419, size: 8 },
+                { text: val('A_fren'), x: 194, y: 407, size: 8 },
+                { text: val('B_fren'), x: 355, y: 407, size: 8 },
+                { text: val('A_yesilkart'), x: 218, y: 372, size: 8 },
+                { text: val('B_yesilkart'), x: 320, y: 372, size: 8 },
+                { text: val('A_ulke'), x: 197, y: 360, size: 8 },
+                { text: val('B_ulke'), x: 300, y: 360, size: 8 },
+                { text: val('A_pasaport'), x: 216, y: 348, size: 8 },
+                { text: val('B_pasaport'), x: 320, y: 348, size: 8 },
+
+                // 8. SÜRÜCÜ GÖRÜŞLERİ (EN ALT)
+                //{ text: val('A_gorus'), x: 19, y: 96, size: 8 },
+                //{ text: val('B_gorus'), x: 283, y: 96, size: 8 },
+                { text: val('A_gorus'), x: 19, y: 96, size: 8, maxWidth: 255, lineHeight: 11 },
+                { text: val('B_gorus'), x: 283, y: 96, size: 8, maxWidth: 255, lineHeight: 11 },
+            ];
+
+            textFields.forEach(field => {
+                if(field.text) {
+                    page.drawText(fixTurkishChars(field.text), { 
+                        x: field.x, 
+                        y: field.y, 
+                        size: field.size || 10, 
+                        font: field.isBold ? fontBold : font, 
+                        color: PDFLib.rgb(0, 0, 0),
+                        maxWidth: field.maxWidth,     // Eğer belirtilmişse genişlik sınırını uygula
+                        lineHeight: field.lineHeight  // Eğer belirtilmişse satır aralığını uygula
+                    });
+                }
+            });
+
+            // ==============================================================
+            // BÜTÜN İHLAL KUTUCUKLARI (X'LER)
+            // ==============================================================
+            const checkFields = [
+                // ARAÇ A İHLALLERİ
+                { id: 'v_13_A', x: 185, y: 626 }, { id: 'v_14_A', x: 185, y: 614 },
+                { id: 'v_15_A', x: 185, y: 602 }, { id: 'v_16_A', x: 185, y: 590 },
+                { id: 'v_17_A', x: 185, y: 579 }, { id: 'v_18_A', x: 185, y: 568 },
+                { id: 'v_19_A', x: 185, y: 556 }, { id: 'v_21_A', x: 185, y: 533 },
+                { id: 'v_22_A', x: 185, y: 522 }, { id: 'v_23_A', x: 185, y: 510 },
+                { id: 'v_24_A', x: 185, y: 499 }, { id: 'v_25_A', x: 185, y: 487 },
+                { id: 'v_26_A', x: 185, y: 476 }, { id: 'v_27_A', x: 185, y: 465 },
+                { id: 'v_28_A', x: 185, y: 453 },
+                
+                // ARAÇ B İHLALLERİ
+                { id: 'v_13_B', x: 390, y: 626 }, { id: 'v_14_B', x: 390, y: 614 },
+                { id: 'v_15_B', x: 390, y: 602 }, { id: 'v_16_B', x: 390, y: 590 },
+                { id: 'v_17_B', x: 390, y: 579 }, { id: 'v_18_B', x: 390, y: 568 },
+                { id: 'v_19_B', x: 390, y: 556 }, { id: 'v_21_B', x: 390, y: 533 },
+                { id: 'v_22_B', x: 390, y: 522 }, { id: 'v_23_B', x: 390, y: 510 },
+                { id: 'v_24_B', x: 390, y: 499 }, { id: 'v_25_B', x: 390, y: 487 },
+                { id: 'v_26_B', x: 390, y: 476 }, { id: 'v_27_B', x: 390, y: 465 },
+                { id: 'v_28_B', x: 390, y: 453 }
+            ];
+
+            checkFields.forEach(chk => {
+                if(isCh(chk.id)) {
+                    page.drawText('X', { x: chk.x, y: chk.y, size: 11, font: fontBold, color: PDFLib.rgb(1, 0, 0) });
+                }
+            });
+
+            // ==============================================================
+            // GÖRSELLER (DARBE NOKTALARI VE KROKİ)
+            // ==============================================================
+
+            // 0 derece = Sağa Dönük | 90 derece = Yukarı Yönlü | 180 derece = Sola Dönük | 270 derece = Aşağı Yönlü
+            const IMPACT_DATA = {
+                "Otomobil": {
+                    "Ön":       { x: 127, y: 312, angle: 270 },
+                    "Sağ Ön":   { x: 150, y: 312, angle: 225 },
+                    "Sol Ön":   { x: 106, y: 312, angle: 315 },
+                    "Sağ Üst":  { x: 146, y: 295, angle: 180 },
+                    "Sol Üst":  { x: 106,  y: 295, angle: 0 },
+                    "Sağ Orta": { x: 146, y: 274, angle: 180 },
+                    "Sol Orta": { x: 106, y: 274, angle: 0 },
+                    "Sağ Alt":  { x: 146, y: 260, angle: 180 },
+                    "Sol Alt":  { x: 106, y: 260, angle: 0 },
+                    "Arka":     { x: 127, y: 242, angle: 90 },
+                    "Sağ Arka": { x: 148, y: 243, angle: 135 },
+                    "Sol Arka": { x: 106, y: 243, angle: 45 }
+                },
+                "Motosiklet": {
+                    "Ön":       { x: 61, y: 300, angle: 270 },
+                    "Sağ Ön":   { x: 65, y: 298, angle: 225 },
+                    "Sol Ön":   { x: 57, y: 298, angle: 315 },
+                    "Sağ Üst":  { x: 70, y: 291, angle: 180 },
+                    "Sol Üst":  { x: 52,  y: 291, angle: 0 },
+                    "Sağ Orta": { x: 70, y: 274, angle: 180 },
+                    "Sol Orta": { x: 52, y: 274, angle: 0 },
+                    "Sağ Alt":  { x: 70, y: 260, angle: 180 },
+                    "Sol Alt":  { x: 52, y: 260, angle: 0 },
+                    "Arka":     { x: 61, y: 246, angle: 90 },
+                    "Sağ Arka": { x: 66, y: 250, angle: 135 },
+                    "Sol Arka": { x: 56, y: 250, angle: 45 }
+                },
+                "Kamyon": {
+                    "Ön":       { x: 208, y: 324, angle: 270 },
+                    "Sağ Ön":   { x: 224, y: 321, angle: 225 },
+                    "Sol Ön":   { x: 192, y: 321, angle: 315 },
+                    "Sağ Üst":  { x: 236, y: 300, angle: 180 },
+                    "Sol Üst":  { x: 180,  y: 300, angle: 0 },
+                    "Sağ Orta": { x: 236, y: 280, angle: 180 },
+                    "Sol Orta": { x: 180, y: 280, angle: 0 },
+                    "Sağ Alt":  { x: 236, y: 260, angle: 180 },
+                    "Sol Alt":  { x: 180, y: 260, angle: 0 },
+                    "Arka":     { x: 208, y: 242, angle: 90 },
+                    "Sağ Arka": { x: 224, y: 245, angle: 135 },
+                    "Sol Arka": { x: 192, y: 245, angle: 45 }
+                }
+            };
+
+            const drawRedArrow = (targetPage, targetX, targetY, angleDegrees) => {
+                const angleRad = angleDegrees * (Math.PI / 180);
+                const arrowLength = 15; 
+                const headLen = 10;     
+                const lineWidth = 3;    
+                const redColor = PDFLib.rgb(1, 0, 0);
+
+                const startX = targetX - arrowLength * Math.cos(angleRad);
+                const startY = targetY - arrowLength * Math.sin(angleRad);
+
+                targetPage.drawLine({
+                    start: { x: startX, y: startY }, end: { x: targetX, y: targetY },
+                    thickness: lineWidth, color: redColor
+                });
+
+                targetPage.drawLine({
+                    start: { x: targetX, y: targetY },
+                    end: { x: targetX - headLen * Math.cos(angleRad - Math.PI / 6), y: targetY - headLen * Math.sin(angleRad - Math.PI / 6) },
+                    thickness: lineWidth, color: redColor
+                });
+                targetPage.drawLine({
+                    start: { x: targetX, y: targetY },
+                    end: { x: targetX - headLen * Math.cos(angleRad + Math.PI / 6), y: targetY - headLen * Math.sin(angleRad + Math.PI / 6) },
+                    thickness: lineWidth, color: redColor
+                });
+            };
+
+            // --- SENİN ÖZEL KAYDIRMA (OFFSET) MANTIĞIN ---
+            const getOffset = (aracTipi) => {
+                if (aracTipi === "Otomobil") return 318;      // Bulduğun doğru değer
+                if (aracTipi === "Motosiklet") return 444;    // Bulduğun doğru değer
+                if (aracTipi === "Kamyon") return 125;         // Izgaradan ölçtüğün değer
+                return 0;
+            };
+
+            // 1. Araç A Ok Çizimi (Normal Sistem)
+            const typeA = val('A_arac_tipi');
+            const impactA = val('A_darbe');
+            if (IMPACT_DATA[typeA] && IMPACT_DATA[typeA][impactA]) {
+                const data = IMPACT_DATA[typeA][impactA];
+                drawRedArrow(page, data.x, data.y, data.angle);
+            }
+
+            // 2. Araç B Ok Çizimi (Normal Sistem)
+            const typeB = val('B_arac_tipi');
+            const impactB = val('B_darbe');
+            
+            if (IMPACT_DATA[typeB] && IMPACT_DATA[typeB][impactB]) {
+                const data = IMPACT_DATA[typeB][impactB];
+                const aktifOffset = getOffset(typeB); // Ekrandaki seçime göre offset alır
+                drawRedArrow(page, data.x + aktifOffset, data.y, data.angle);
+            }
+
+/*             // ==========================================
+            // GEÇİCİ TEST: TÜM OKLARI ÇİZ
+            // ==========================================
+           const testType = "Motosiklet"; // "Otomobil", "Motosiklet" veya "Kamyon"
+            
+            if (IMPACT_DATA[testType]) {
+                Object.keys(IMPACT_DATA[testType]).forEach(noktaIsmi => {
+                    const data = IMPACT_DATA[testType][noktaIsmi];
+                    const testOffset = getOffset(testType); // Artık ekrana takılmaz, testType neyse onun offsetini alır!
+                    
+                    // Araç A'nın üzerine çiz
+                    drawRedArrow(page, data.x, data.y, data.angle);
+                    
+                    // Araç B'nin üzerine çiz (Artık %100 doğru yere oturacak)
+                    drawRedArrow(page, data.x + testOffset, data.y, data.angle);
+                });
+            }           
+*/
+            
+            // 3. KROKİ ALANI (Sabit Ölçü ve Güvenli Yükleme)
+            if (savedKrokiImage && savedKrokiImage.length > 50) {
+                try {
+                    const pngImage = await pdfDoc.embedPng(Uint8Array.from(atob(savedKrokiImage.split(',')[1]), c => c.charCodeAt(0)));
+                    
+                    const netGenislik = 480; 
+                    const netYukseklik = 100; 
+                    const finalX = 45;  
+                    const finalY = 115; 
+
+                    page.drawImage(pngImage, { 
+                        x: finalX, 
+                        y: finalY, 
+                        width: netGenislik, 
+                        height: netYukseklik 
+                    });
+                } catch (croquisError) {
+                    console.log("Kroki PDF'e eklenirken bir hata oluştu:", croquisError);
+                }
+            }
+
+            // 4. ÇIKTIYI İNDİR
+            const pdfBytes = await pdfDoc.save();
+            saveAs(new Blob([pdfBytes], { type: 'application/pdf' }), `Resmi_Tutanak_${fixTurkishChars(val('A_plaka')) || 'Yeni'}.pdf`);
+
+        } catch (error) { 
+            alert("PDF Hatası: " + error.message); 
+        } finally { 
+            document.getElementById('loader').style.display = 'none'; 
+        }
+    }
+
+    let krokiCanvas = null;
+    let savedKrokiImage = null; // Oluşturulan resmi PDF için burada tutacağız
+
+
+    function openKrokiModal() {
+        document.getElementById('dropdownMenu').style.display = 'none';
+        document.getElementById('krokiModal').style.display = 'flex';
+        
+        if (!krokiCanvas) {
+            // YENİ EKLENEN: preserveObjectStacking ile katman sırası kilitlenir (yollar hep altta kalır)
+            krokiCanvas = new fabric.Canvas('fabricCanvas', { 
+                backgroundColor: '#ffffff', 
+                selection: true,
+                preserveObjectStacking: true 
+            });
+        }
+        
+        setTimeout(() => {
+            const wrapper = document.getElementById('fc-wrapper');
+            const cHeight = wrapper.clientHeight - 40; 
+            const cWidth = cHeight * 5; 
+
+            krokiCanvas.setWidth(cWidth);
+            krokiCanvas.setHeight(cHeight);
+            krokiCanvas.renderAll();
+
+            wrapper.scrollLeft = (cWidth - wrapper.clientWidth) / 2;
+        }, 50);
+    }
+
+
+
+    // Telefon yan/dik çevrildiğinde ekranı yeniden hesapla
+    window.addEventListener('resize', () => {
+        if(document.getElementById('krokiModal').style.display === 'flex' && krokiCanvas) {
+            const wrapper = document.getElementById('fc-wrapper');
+            const cHeight = wrapper.clientHeight - 40;
+            const cWidth = cHeight * 5; // Yine 5:1 oranı
+            krokiCanvas.setWidth(cWidth);
+            krokiCanvas.setHeight(cHeight);
+            krokiCanvas.renderAll();
+        }
+    });
+
+
+    // --- TASARIMLAR (SVG FORMATINDA) ---
+    const krokiAssets = {
+        // 1. Yollar
+        cross: `<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 0 100 L 100 100 L 100 0" fill="none" stroke="#222" stroke-width="6"/>
+                    <path d="M 200 0 L 200 100 L 300 100" fill="none" stroke="#222" stroke-width="6"/>
+                    <path d="M 0 200 L 100 200 L 100 300" fill="none" stroke="#222" stroke-width="6"/>
+                    <path d="M 300 200 L 200 200 L 200 300" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="150" y1="0" x2="150" y2="100" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                    <line x1="150" y1="200" x2="150" y2="300" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                    <line x1="0" y1="150" x2="100" y2="150" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                    <line x1="200" y1="150" x2="300" y2="150" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                </svg>`,
+        t_junction: `<svg width="300" height="200" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="20" x2="300" y2="20" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="0" y1="80" x2="100" y2="80" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="200" y1="80" x2="300" y2="80" fill="none" stroke="#222" stroke-width="6"/>
+                    <path d="M 100 80 Q 100 100 100 200" fill="none" stroke="#222" stroke-width="6"/>
+                    <path d="M 200 80 Q 200 100 200 200" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="0" y1="50" x2="300" y2="50" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                    <line x1="150" y1="100" x2="150" y2="200" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                </svg>`,
+        straight: `<svg width="300" height="100" viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="10" x2="300" y2="10" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="0" y1="90" x2="300" y2="90" fill="none" stroke="#222" stroke-width="6"/>
+                    <line x1="0" y1="50" x2="300" y2="50" fill="none" stroke="#222" stroke-width="4" stroke-dasharray="15 15"/>
+                </svg>`,
+        
+        // 2. Araçlar (Senin Görselindeki Gibi: Arkası Düz, Önünde Koyu Cam Bölmesi)
+        car: `<svg width="50" height="100" viewBox="0 0 50 100" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="2" width="46" height="96" fill="#ffffff" stroke="#333" stroke-width="3"/>
+                <rect x="2" y="2" width="46" height="20" fill="#333"/> </svg>`,
+        motorcycle: `<svg width="25" height="70" viewBox="0 0 25 70" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="4" y="10" width="17" height="60" fill="#ffffff" stroke="#333" stroke-width="2"/>
+                        <rect x="4" y="10" width="17" height="15" fill="#333"/> <circle cx="12.5" cy="5" r="5" fill="#333" /> </svg>`
+    };
+
+
+   
+    // Yolları Ekle (Z-index olarak en alta atılır)
+    function addRoad(type) {
+        if (!krokiCanvas) return;
+        fabric.loadSVGFromString(krokiAssets[type], function(objects, options) {
+            const obj = fabric.util.groupSVGElements(objects, options);
+            obj.set({ 
+                left: krokiCanvas.width / 2, 
+                top: krokiCanvas.height / 2, 
+                originX: 'center', 
+                originY: 'center', 
+                transparentCorners: false, 
+                cornerColor: 'blue' 
+            });
+            krokiCanvas.add(obj);
+            krokiCanvas.sendToBack(obj); // Yol her zaman altta kalır
+            krokiCanvas.setActiveObject(obj);
+            krokiCanvas.renderAll();
+        });
+    }
+
+    function addRoadLine(type) {
+        if (!krokiCanvas) return;
+
+        const line = new fabric.Line([0, 0, 300, 0], {
+            left: krokiCanvas.width / 2,
+            top: krokiCanvas.height / 2,
+            stroke: "#2c3e50",
+            strokeWidth: 6,
+            originX: "center",
+            originY: "center"
+        });
+
+        if (type === "dashed") {
+            line.set({ strokeDashArray: [25, 15] });
+        }
+
+        krokiCanvas.add(line);
+        krokiCanvas.sendToBack(line); // Çizginin en alta (yol seviyesine) gitmesini sağlar
+        krokiCanvas.setActiveObject(line);
+        krokiCanvas.renderAll();
+    }
+
+    // Ok İşareti Ekleme
+    function addArrow() {
+        if (!krokiCanvas) return;
+        
+        // SVG formatında basit bir kırmızı ok
+        const arrowSVG = `<svg width="60" height="30" viewBox="0 0 60 30" xmlns="http://www.w3.org/2000/svg">
+            <line x1="0" y1="15" x2="45" y2="15" stroke="#cc0000" stroke-width="4" />
+            <polygon points="45,5 60,15 45,25" fill="#cc0000" />
+        </svg>`;
+        
+        fabric.loadSVGFromString(arrowSVG, function(objects, options) {
+            const obj = fabric.util.groupSVGElements(objects, options);
+            obj.set({
+                left: krokiCanvas.width / 2,
+                top: krokiCanvas.height / 2,
+                originX: 'center',
+                originY: 'center',
+                transparentCorners: false,
+                cornerColor: 'blue'
+            });
+            krokiCanvas.add(obj);
+            krokiCanvas.setActiveObject(obj);
+            krokiCanvas.renderAll();
+        });
+    }
+
+    // Çift Tıklanarak Düzenlenebilen Metin Ekleme
+    function addText() {
+        if (!krokiCanvas) return;
+
+        // IText nesnesi, kullanıcının ekranda yazıya çift tıklayıp değiştirmesine olanak tanır
+        const textObj = new fabric.IText('Buraya çift tıklayıp yazın', {
+            left: krokiCanvas.width / 2,
+            top: krokiCanvas.height / 2,
+            fontFamily: '-apple-system, sans-serif',
+            fill: '#007AFF', // Senin temanın mavi rengi
+            fontSize: 18,
+            fontWeight: 'bold',
+            originX: 'center',
+            originY: 'center',
+            transparentCorners: false,
+            cornerColor: 'blue'
+        });
+
+        krokiCanvas.add(textObj);
+        krokiCanvas.setActiveObject(textObj);
+        krokiCanvas.renderAll();
+    }
+
+    // Araçları Ekle (A veya B harfiyle birlikte grup olarak)
+    function addVehicle(type, labelText) {
+        fabric.loadSVGFromString(krokiAssets[type], function(objects, options) {
+            const shape = fabric.util.groupSVGElements(objects, options);
+            
+            // Üzerindeki A veya B yazısı
+            const text = new fabric.Text(labelText, {
+                fontSize: type === 'car' ? 28 : 16,
+                fontWeight: 'bold',
+                fill: '#000000',
+                originX: 'center',
+                originY: 'center',
+                originY: 'center',
+                top: type === 'car' ? 50 : 40, 
+                left: type === 'car' ? 25 : 12.5
+            });
+                
+            // Araç ve Yazıyı Grupla
+            const group = new fabric.Group([shape, text], {
+                left: krokiCanvas.width / 2,
+                top: krokiCanvas.height / 2,
+                originX: 'center', originY: 'center',
+                transparentCorners: false, cornerColor: 'red'
+            });
+
+            krokiCanvas.add(group);
+            krokiCanvas.bringToFront(group); // Araçlar yolların üstünde
+            krokiCanvas.setActiveObject(group);
+            krokiCanvas.renderAll();
+        });
+    }
+
+    
+    // Seçili Öğeyi Sil
+    function deleteSelectedKrokiItem() {
+        const activeObj = krokiCanvas.getActiveObject();
+        if (activeObj) { krokiCanvas.remove(activeObj); }
+    }
+
+    // Çizimi Kaydet ve PDF'e Hazırla
+    function saveKrokiAndClose() {
+        // Seçimleri kaldır ki çerçeveler resimde çıkmasın
+        krokiCanvas.discardActiveObject();
+        krokiCanvas.renderAll();
+        
+        // Resmi yüksek kalitede PNG olarak al
+        savedKrokiImage = krokiCanvas.toDataURL({ format: 'png', multiplier: 2 });
+        
+        document.getElementById('krokiModal').style.display = 'none';
+        alert("Kroki başarıyla hazırlandı! Artık PDF İndir butonuna basabilirsiniz.");
+    }
+
+    // ==========================================
+    // --- KROKİ KAYIT, LİSTE VE YÜKLEME SİSTEMİ ---
+    // ==========================================
+    
+    // Krokiyi Cihaza Kaydet
+    function saveKrokiData() {
+        if (!krokiCanvas) return;
+        document.getElementById('krokiDropdownMenu').style.display = 'none';
+        
+        const isim = prompt("Kroki için bir isim girin:", "Kroki - " + new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}));
+        if (!isim) return;
+
+        const id = Date.now().toString();
+        // Fabric.js canvasını içindeki tüm araç/yol verileriyle JSON'a çeviriyoruz
+        const canvasData = krokiCanvas.toJSON(); 
+
+        const record = { id, name: isim, data: canvasData };
+        let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+        savedList.push(record);
+        localStorage.setItem('krokiKayitListesi', JSON.stringify(savedList));
+        
+        alert('Kroki başarıyla kaydedildi.');
+    }
+
+    // Kayıtlı Krokileri Listele
+    function showKrokiList() {
+        document.getElementById('krokiDropdownMenu').style.display = 'none';
+        const modal = document.getElementById('krokiListModal');
+        const listContainer = document.getElementById('savedKrokiListContainer');
+        let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+        
+        listContainer.innerHTML = '';
+        if(savedList.length === 0) {
+            listContainer.innerHTML = '<p style="text-align:center; color:#8E8E93; margin-top:20px;">Henüz kaydedilmiş kroki yok.</p>';
+        } else {
+            savedList.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'record-item';
+                div.innerHTML = `
+                    <span onclick="loadKrokiData('${item.id}')"><i class="fas fa-map-marked-alt" style="margin-right:8px;"></i> ${item.name}</span>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="del-btn" style="color: var(--blue);" onclick="shareKrokiData('${item.id}')"><i class="fas fa-share-alt"></i></button>
+                        <button class="del-btn" onclick="deleteKrokiData('${item.id}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+        modal.style.display = 'flex';
+    }
+
+    // Listeden Krokiyi Çizim Alanına Yükle
+    function loadKrokiData(id) {
+        let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+        const record = savedList.find(r => r.id === id);
+        if(!record) return;
+
+        // JSON verisini Fabric.js'e geri yüklüyoruz
+        krokiCanvas.loadFromJSON(record.data, function() {
+            krokiCanvas.renderAll();
+        });
+
+        document.getElementById('krokiListModal').style.display = 'none';
+    }
+
+    // Kroki Sil
+    function deleteKrokiData(id) {
+        if(!confirm("Bu krokiyi kalıcı olarak silmek istediğinize emin misiniz?")) return;
+        let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+        savedList = savedList.filter(r => r.id !== id);
+        localStorage.setItem('krokiKayitListesi', JSON.stringify(savedList));
+        showKrokiList(); 
+    }
+
+
+    // ==========================================
+    // --- PAYLAŞMA VE İNDİRME MOTORU ---
+    // ==========================================
+    let pendingShareData = "";
+    let pendingShareName = "";
+
+    function openShareChoice(dataString, name) {
+        pendingShareData = dataString;
+        pendingShareName = name;
+        document.getElementById('shareChoiceModal').style.display = 'flex';
+    }
+
+    // Tutanak Paylaşım Tetikleyicisi
+    async function shareTutanak(id) {
+        let savedList = JSON.parse(localStorage.getItem('tutanakList') || '[]');
+        const record = savedList.find(r => r.id === id);
+        if(!record) return;
+        
+        // Modal'ı açar
+        openShareChoice(JSON.stringify(record), "Tutanak_" + record.name.replace(/ /g, '_'));
+    }
+
+    // Kroki Paylaşım Tetikleyicisi
+    async function shareKrokiData(id) {
+        let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+        const record = savedList.find(r => r.id === id);
+        if(!record) return;
+
+        // Modal'ı açar
+        openShareChoice(JSON.stringify(record), "Kroki_" + record.name.replace(/ /g, '_'));
+    }
+
+    // 1. Seçenek: Dosya Olarak İndir
+    function executeDownload() {
+        // Zaten kütüphanende var olan FileSaver.js kullanılarak txt dosyası indirilir
+        const blob = new Blob([pendingShareData], { type: "text/plain;charset=utf-8" });
+        saveAs(blob, pendingShareName + ".txt");
+        document.getElementById('shareChoiceModal').style.display = 'none';
+    }
+
+    // 2. Seçenek: WhatsApp / API ile Paylaş
+    async function executeShare() {
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: pendingShareName,
+                    text: pendingShareData
+                });
+            } catch (err) { console.log('Paylaşım iptal edildi.', err); }
+        } else {
+            navigator.clipboard.writeText(pendingShareData);
+            alert("Kayıt metni kopyalandı! Göndermek istediğiniz yere yapıştırabilirsiniz.");
+        }
+        document.getElementById('shareChoiceModal').style.display = 'none';
+    }
+
+    // ==========================================
+    // --- A / B ARACI ÖZEL PAYLAŞIM VE YÜKLEME ---
+    // ==========================================
+
+    // Formdan Sadece İstenen Aracın (A veya B) Verilerini Çeker
+    function getVehicleData(v) {
+        const data = {};
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            if (el.id) {
+                // A Aracına ait id'ler (A_, As_, v_XX_A)
+                if (v === 'A' && (el.id.startsWith('A_') || el.id.startsWith('As_') || el.id.endsWith('_A'))) {
+                    data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+                }
+                // B Aracına ait id'ler (B_, Bs_, v_XX_B)
+                if (v === 'B' && (el.id.startsWith('B_') || el.id.startsWith('Bs_') || el.id.endsWith('_B'))) {
+                    data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+                }
+            }
+        });
+        return data;
+    }
+
+    // Seçilen Aracı Paylaşıma/İndirmeye Gönderir
+    function shareVehicleFromForm(vehicleType) {
+        document.getElementById('dropdownMenu').style.display = 'none';
+        const data = getVehicleData(vehicleType);
+        
+        // Modal'ı açar (Önceki patch'te eklediğimiz openShareChoice fonksiyonunu kullanır)
+        openShareChoice(JSON.stringify(data), "Arac_" + vehicleType + "_Bilgileri");
+    }
+
+    // Dışarıdan Gelen Veriyi İlgili Araca Yükler (Akıllı Çeviri ile)
+    function importVehicleToForm(targetVehicle) {
+        document.getElementById('dropdownMenu').style.display = 'none';
+        const inputData = prompt(targetVehicle + " Aracı için size gönderilen veriyi buraya yapıştırın:");
+        
+        if (!inputData) return;
+
+        try {
+            const parsedData = JSON.parse(inputData);
+            
+            // Gelen verinin aslında A aracı mı yoksa B aracı mı olduğunu tespit et
+            let sourceVehicle = 'A';
+            if (Object.keys(parsedData).some(k => k.startsWith('B_') || k.startsWith('Bs_') || k.endsWith('_B'))) {
+                sourceVehicle = 'B';
+            }
+
+            // Gelen verileri formdaki alanlara yerleştir
+            Object.keys(parsedData).forEach(key => {
+                let targetKey = key;
+                
+                // Eğer karşı taraf A aracı olarak doldurmuş ama sen B aracı olarak yüklüyorsan İD'leri dönüştür
+                if (sourceVehicle !== targetVehicle) {
+                    if (key.startsWith(sourceVehicle + '_')) {
+                        targetKey = targetVehicle + '_' + key.substring(2);
+                    } else if (key.startsWith(sourceVehicle + 's_')) {
+                        targetKey = targetVehicle + 's_' + key.substring(3);
+                    } else if (key.endsWith('_' + sourceVehicle)) {
+                        targetKey = key.substring(0, key.length - 2) + '_' + targetVehicle;
+                    }
+                }
+
+                const el = document.getElementById(targetKey);
+                if (el) {
+                    if (el.type === 'checkbox') {
+                        el.checked = parsedData[key];
+                    } else {
+                        el.value = parsedData[key];
+                    }
+                }
+            });
+            
+            alert(targetVehicle + " Aracı bilgileri başarıyla forma yüklendi!");
+        } catch (e) {
+            alert("Hatalı veri! Lütfen sadece Araç Paylaşımı ile kopyalanmış kodu yapıştırın.");
+        }
+    }
+
+
+    // Dışarıdan Paylaşılan Krokiyi İçe Aktar
+    function importKrokiData() {
+        document.getElementById('krokiDropdownMenu').style.display = 'none';
+        const inputData = prompt("Size gönderilen KROKİ verisini buraya yapıştırın:");
+        if (!inputData) return;
+
+        try {
+            const newRecord = JSON.parse(inputData);
+            
+            // Bunun gerçekten bir kroki verisi olup olmadığını (içinde fabric nesneleri var mı diye) test edelim
+            if (!newRecord.data || !newRecord.data.objects) throw new Error("Geçersiz format"); 
+
+            newRecord.id = Date.now().toString(); // Yeni bir ID ata ki eskilerle çakışmasın
+            newRecord.name = newRecord.name + " (İçe Aktarıldı)";
+
+            let savedList = JSON.parse(localStorage.getItem('krokiKayitListesi') || '[]');
+            savedList.push(newRecord); // Eskileri silmeden listenin sonuna ekler
+            localStorage.setItem('krokiKayitListesi', JSON.stringify(savedList));
+            
+            alert("Paylaşılan kroki başarıyla listeye eklendi.");
+        } catch (e) {
+            alert("Hatalı veri formatı! Lütfen size gönderilen kroki kodunu tam olarak yapıştırdığınızdan emin olun.");
+        }
+    }
+
+    // ==========================================
+    // --- INTRO VE SERVICE WORKER (PWA) SİSTEMİ ---
+    // ==========================================
+
+    // Açılış İntrosu Mantığı
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            const intro = document.getElementById('intro-screen');
+            intro.style.opacity = '0';
+            setTimeout(() => { intro.style.display = 'none'; }, 800);
+        }, 2500); // 2.5 saniye ekranda kalır
+    });
+
+    // PWA Service Worker Kaydı ve Offline Mesajı
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker başarıyla kaydedildi: ', registration.scope);
+                    
+                    // Offline mesajını göster
+                    const toast = document.getElementById('offline-toast');
+                    setTimeout(() => {
+                        toast.style.bottom = '20px'; // Mesajı yukarı kaydır
+                        setTimeout(() => {
+                            toast.style.bottom = '-50px'; // 4 saniye sonra geri sakla
+                        }, 4000);
+                    }, 3500); // İntro bittikten sonra çıkar
+                })
+                .catch(err => {
+                    console.log('ServiceWorker kaydı başarısız oldu: ', err);
+                });
+        });
+    }
+
+
+</script>
+
+<div id="krokiModal">
+    <div id="krokiContent">
+        
+        <div class="kroki-header">
+            <button class="menu-btn" style="color:#FF3B30;" onclick="document.getElementById('krokiModal').style.display='none'"><i class="fas fa-times"></i></button>
+            <span>Kroki Çizim Ekranı</span>
+            <div style="position:relative;">
+                <button class="menu-btn" onclick="toggleKrokiMenu()"><i class="fas fa-ellipsis-v"></i></button>
+                <div id="krokiDropdownMenu" class="dropdown">
+                    <button onclick="saveKrokiData()"><i class="fas fa-save"></i> Kroki Kaydet</button>
+                    <button onclick="showKrokiList()"><i class="fas fa-list"></i> Kroki Listele</button>
+                    <button onclick="importKrokiData()"><i class="fas fa-file-import"></i> Kroki Yükle</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="kroki-canvas-container" id="fc-wrapper">
+            <canvas id="fabricCanvas" width="1000" height="300"></canvas>
+        </div>
+
+        <div class="kroki-bottom-toolbar">
+            <div class="kroki-btn-group">
+                <span>YOL:</span>
+                <button onclick="addRoad('cross')">Dörtlü</button>
+                <button onclick="addRoad('t_junction')">T Kavşak</button>
+                <button onclick="addRoad('straight')">Düz Yol</button>
+                <button onclick="addRoadLine('solid')">Düz Çizgi</button>
+                <button onclick="addRoadLine('dashed')">Kesik Çizgi</button>
+            </div>
+            <div class="kroki-btn-group">
+                <span>ARAÇ:</span>
+                <button onclick="addVehicle('car', 'A')">Oto(A)</button>
+                <button onclick="addVehicle('car', 'B')">Oto(B)</button>
+                <button onclick="addVehicle('motorcycle', 'A')">Motor(A)</button>
+                <button onclick="addVehicle('motorcycle', 'B')">Motor(B)</button>
+            </div>
+            <div class="kroki-btn-group">
+                <span>EK:</span>
+                <button onclick="addArrow()"><i class="fas fa-arrow-right"></i> Ok İşareti</button>
+                <button onclick="addText()"><i class="fas fa-font"></i> Yazı</button>
+            </div>
+            <div class="kroki-btn-group">
+                <button class="danger" onclick="deleteSelectedKrokiItem()"><i class="fas fa-trash"></i> Seçiliyi Sil</button>
+                <button class="danger" onclick="krokiCanvas.clear(); krokiCanvas.backgroundColor='#ffffff';">Tümünü Temizle</button>
+                <button class="success" onclick="saveKrokiAndClose()"><i class="fas fa-check"></i> Krokiyi Tutanağa Ekle</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="shareChoiceModal" class="modal" style="z-index: 6000;">
+    <div class="modal-content" style="max-width: 320px; text-align:center;">
+        <div class="modal-header">
+            Kayıt İşlemi
+            <button class="modal-close" onclick="document.getElementById('shareChoiceModal').style.display='none'"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="padding: 20px; display:flex; flex-direction:column; gap:12px;">
+            <button onclick="executeDownload()" style="padding:14px; background:#007AFF; color:white; border:none; border-radius:10px; font-weight:bold; font-size: 14px; cursor:pointer;">
+                <i class="fas fa-download"></i> Dosya Olarak İndir
+            </button>
+            <button onclick="executeShare()" style="padding:14px; background:#107C41; color:white; border:none; border-radius:10px; font-weight:bold; font-size: 14px; cursor:pointer;">
+                <i class="fas fa-share-alt"></i> WhatsApp / Diğer Paylaş
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
