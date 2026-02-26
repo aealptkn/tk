@@ -11,11 +11,15 @@
     <link rel="apple-touch-icon" href="./logo192.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Trafik Kaza Tespit Tutanağı</title>
-    <script src="https://unpkg.com/tesseract.js@v4.0.2/dist/tesseract.min.js"></script>
-    <!--<script src="./tesseract.min.js"></script> -->
+    <!--<script src="https://unpkg.com/tesseract.js@v4.0.2/dist/tesseract.min.js"></script> -->
+    <script src="./tesseract.min.js"></script>
     <script src="./FileSaver.min.js"></script>
     <script src="./pdf-lib.min.js"></script>
     <script src="./fabric.min.js"></script>
+    
+    <link rel="stylesheet" href="./css/cropper.min.css">
+    <script src="./cropper.min.js"></script>
+    
     <link rel="stylesheet" href="./css/all.min.css">
     
     <style>
@@ -203,7 +207,7 @@
 <main>
     <input type="file" id="ocr-kimlik" hidden accept="image/*" onchange="openCropper(this)">
     <input type="file" id="ocr-ruhsat" hidden accept="image/*" onchange="openCropper(this)">
-
+    <input type="file" id="ocr-sigorta" hidden accept="image/*" onchange="openCropper(this)">
     <div class="section-title">KAZA ZAMANI VE YERİ</div>
     <div class="card">
         <div class="row"><label>Tarih/Saat</label><input type="datetime-local" id="k_tarih"></div>
@@ -228,8 +232,9 @@
     <div class="section-title">ARAÇ A</div>
     <div class="card">
         <div class="ocr-bar">
-            <button class="ocr-btn" onclick="triggerOCR('A', 'kimlik')"><i class="fas fa-id-card"></i>TC'den Çek</button>
-            <button class="ocr-btn" onclick="triggerOCR('A', 'ruhsat')"><i class="fas fa-car"></i>Ruhsattan Çek</button>
+            <button class="ocr-btn" onclick="triggerOCR('A', 'kimlik')"><i class="fas fa-id-card"></i>TC'den</button>
+            <button class="ocr-btn" onclick="triggerOCR('A', 'ruhsat')"><i class="fas fa-car"></i>Ruhsat</button>
+            <button class="ocr-btn" onclick="triggerOCR('A', 'sigorta')"><i class="fas fa-shield-alt"></i>Poliçe Çek</button>
         </div>
     <div class="section-title">4- Sürücü Bilgileri</div>
         <div class="card">  
@@ -331,8 +336,9 @@
     <div class="section-title">ARAÇ B</div>
     <div class="card">
         <div class="ocr-bar">
-            <button class="ocr-btn" onclick="triggerOCR('B', 'kimlik')"><i class="fas fa-id-card"></i>TC'den Çek</button>
-            <button class="ocr-btn" onclick="triggerOCR('B', 'ruhsat')"><i class="fas fa-car"></i>Ruhsattan Çek</button>
+            <button class="ocr-btn" onclick="triggerOCR('B', 'kimlik')"><i class="fas fa-id-card"></i>TC'den</button>
+            <button class="ocr-btn" onclick="triggerOCR('B', 'ruhsat')"><i class="fas fa-car"></i>Ruhsat</button>
+            <button class="ocr-btn" onclick="triggerOCR('B', 'sigorta')"><i class="fas fa-shield-alt"></i>Poliçe Çek</button>
         </div>
     <div class="section-title">4- Sürücü Bilgileri</div>
         <div class="card">  
@@ -688,27 +694,64 @@
             console.log("Bulunan Metin:\n", text); // Geliştirici konsolunda tam metni görmek için
 
             // 4. Metnin İçinden Bilgiyi Ayıkla
+            let foundData = []; // Kullanıcıya ne bulduğumuzu söylemek için
+
             if (currentDocType === 'kimlik') {
-                // TC Kimlik formatı: Sadece yan yana 11 rakam (0 ile başlayamaz)
                 const tcMatch = text.match(/\b[1-9][0-9]{10}\b/);
                 if(tcMatch) {
                     document.getElementById(`${currentVehicle}_tc`).value = tcMatch[0];
                     alert("TC Kimlik No Başarıyla Bulundu: " + tcMatch[0]);
-                } else {
-                    alert("Uyarı: TC Kimlik No bulunamadı. Fotoğraf net olmayabilir veya yanlış yeri kırpmış olabilirsiniz.");
-                }
-            } else {
-                // Plaka formatı: Örn 34 ABC 123 veya 34ABC123 (Boşlukları silip arayacağız)
-                // Önce okunan metindeki tüm boşlukları ve gereksiz karakterleri temizle
+                } else alert("Uyarı: TC Kimlik No bulunamadı. Lütfen daha net kırpın.");
+
+            } else if (currentDocType === 'ruhsat') {
                 const cleanText = text.replace(/[^A-Z0-9]/g, ''); 
                 const plateMatch = cleanText.match(/[0-9]{2}[A-Z]{1,3}[0-9]{2,4}/);
-                
                 if(plateMatch) {
-                    // Bulunan plakayı okunabilir formata getir (Örn: 34ABC123)
                     document.getElementById(`${currentVehicle}_plaka`).value = plateMatch[0];
                     alert("Plaka Başarıyla Bulundu: " + plateMatch[0]);
+                } else alert("Uyarı: Plaka okunamadı. Lütfen harf ve rakamları net kırpın.");
+                
+            } else if (currentDocType === 'sigorta') {
+                let textUpper = text.toUpperCase();
+                
+                // A) ŞİRKET İSMİ BULMA
+                const sirketler = ["ANADOLU", "AXA", "ALLIANZ", "SOMPO", "AK SİGORTA", "AKSIGORTA", "ETHICA", "MAPFRE", "RAY", "DOĞA", "DOGA", "HDI", "TÜRKİYE", "ZURICH", "QUICK", "BEREKET", "KORU", "GULF", "NEOVA"];
+                let foundSirket = sirketler.find(s => textUpper.includes(s));
+                if (foundSirket) {
+                    document.getElementById(`${currentVehicle}s_sigorta`).value = foundSirket + " SİGORTA";
+                    foundData.push("Şirket");
+                }
+
+                // B) POLİÇE NO BULMA (Genelde POLICE NO: 1234567 şeklindedir veya 7-15 haneli bir sayıdır)
+                let policeMatch = textUpper.match(/POL[Iİ]CE.*?NO[:\s.-]*([A-Z0-9]+)/) || textUpper.match(/\b\d{7,15}\b/);
+                if (policeMatch) {
+                    // Regex grubundan 1. indeksi, bulamazsa direkt eşleşmeyi al
+                    let pNo = policeMatch[1] ? policeMatch[1] : policeMatch[0]; 
+                    document.getElementById(`${currentVehicle}s_police`).value = pNo;
+                    foundData.push("Poliçe No");
+                }
+
+                // C) TRAMER BELGE NO BULMA
+                let tramerMatch = textUpper.match(/TRAMER.*?NO[:\s.-]*([0-9]+)/) || textUpper.match(/BELGE.*?NO[:\s.-]*([0-9]+)/);
+                if (tramerMatch && tramerMatch[1]) {
+                    document.getElementById(`${currentVehicle}s_tramer`).value = tramerMatch[1];
+                    foundData.push("Tramer No");
+                }
+
+                // D) TARİH BULMA (Başlangıç ve Bitiş)
+                let dates = text.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g);
+                if (dates && dates.length > 0) {
+                    // Eğer iki tarih bulduysa birleştir (01.01.2024 - 01.01.2025)
+                    let dateStr = dates.length >= 2 ? `${dates[0]} - ${dates[1]}` : dates[0];
+                    document.getElementById(`${currentVehicle}s_police_tarih`).value = dateStr;
+                    foundData.push("Tarihler");
+                }
+
+                // Sonuç Bildirimi
+                if (foundData.length > 0) {
+                    alert("Sigorta okuması başarılı! Şunlar bulundu ve dolduruldu:\n- " + foundData.join("\n- "));
                 } else {
-                    alert("Uyarı: Plaka okunamadı. Lütfen sadece plaka harf ve rakamlarını içerecek şekilde kırpın.");
+                    alert("Poliçe bilgileri net okunamadı. Lütfen Şirket Adı, Poliçe No ve Tarihlerin bulunduğu alanı daha yakından kırpın.");
                 }
             }
             
@@ -1543,21 +1586,30 @@
         }, 2500); // 2.5 saniye ekranda kalır
     });
 
-    // PWA Service Worker Kaydı ve Offline Mesajı
+    // PWA Service Worker Kaydı ve TEK SEFERLİK Offline Mesajı
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
                     console.log('ServiceWorker başarıyla kaydedildi: ', registration.scope);
                     
-                    // Offline mesajını göster
-                    const toast = document.getElementById('offline-toast');
-                    setTimeout(() => {
-                        toast.style.bottom = '20px'; // Mesajı yukarı kaydır
+                    // Mesajın daha önce gösterilip gösterilmediğini kontrol et
+                    if (!localStorage.getItem('offlineMesajGosterildi')) {
+                        
+                        // ÖNEMLİ: Animasyonu beklemeden HEMEN hafızaya yaz!
+                        // Böylece kullanıcı anında sayfayı yenilese bile bir daha çıkmaz.
+                        localStorage.setItem('offlineMesajGosterildi', 'true');
+                        
+                        const toast = document.getElementById('offline-toast');
                         setTimeout(() => {
-                            toast.style.bottom = '-50px'; // 4 saniye sonra geri sakla
-                        }, 4000);
-                    }, 3500); // İntro bittikten sonra çıkar
+                            toast.style.bottom = '20px'; // Mesajı yukarı kaydır
+                            
+                            setTimeout(() => {
+                                toast.style.bottom = '-50px'; // 4 saniye sonra geri sakla
+                            }, 4000);
+                            
+                        }, 3500); // İntro bittikten sonra çıkar
+                    }
                 })
                 .catch(err => {
                     console.log('ServiceWorker kaydı başarısız oldu: ', err);
