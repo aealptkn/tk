@@ -4,16 +4,11 @@ const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './css/all.min.css',
-  './css/cropper.min.css',
-  './cropper.min.js',
   './bos-tutanak.pdf',
   './fabric.min.js',
   './FileSaver.min.js',
   './pdf-lib.min.js',
-  './tesseract.min.js',
   './worker.min.js',
-  './tesseract-core.wasm.js',
-  './tur.traineddata.gz',
   './webfonts/fa-brands-400.woff2',
   './webfonts/fa-regular-400.woff2',
   './webfonts/fa-solid-900.woff2',
@@ -22,9 +17,6 @@ const ASSETS_TO_CACHE = [
   './logo192.png',
   './logo512.png'
 
-
-  // Eğer font-awesome'un webfonts klasörünü de indirdiysen buraya eklemelisin:
-  // './webfonts/fa-solid-900.woff2',vs.
 ];
 
 self.addEventListener('install', event => {
