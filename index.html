@@ -201,8 +201,8 @@
 </header>
 
 <main>
-    <input type="file" id="ocr-kimlik" hidden accept="image/*" onchange="runOCR(this, currentVehicle, 'kimlik')">
-    <input type="file" id="ocr-ruhsat" hidden accept="image/*" onchange="runOCR(this, currentVehicle, 'ruhsat')">
+    <input type="file" id="ocr-kimlik" hidden accept="image/*" onchange="openCropper(this)">
+    <input type="file" id="ocr-ruhsat" hidden accept="image/*" onchange="openCropper(this)">
 
     <div class="section-title">KAZA ZAMANI VE YERİ</div>
     <div class="card">
@@ -606,41 +606,113 @@
         return text.toString().replace(/[ğĞşŞıİçÇöÖüÜ]/g, letter => map[letter]);
     };
 
-    // --- OCR MOTORU ---
-    let currentVehicle = 'A'; let currentDocType = 'kimlik';
-    function triggerOCR(vehicle, docType) { currentVehicle = vehicle; currentDocType = docType; document.getElementById(`ocr-${docType}`).click(); }
-    
-    async function runOCR(input, vehicle, docType) { 
+    // ==========================================
+    // --- GELİŞMİŞ KIRPMA VE OCR MOTORU ---
+    // ==========================================
+    let currentVehicle = 'A'; 
+    let currentDocType = 'kimlik';
+    let cropper = null;
+
+    function triggerOCR(vehicle, docType) { 
+        currentVehicle = vehicle; 
+        currentDocType = docType; 
+        document.getElementById(`ocr-${docType}`).click(); 
+    }
+
+    // 1. Resim seçildiğinde Kırpma Ekranını (Cropper) Aç
+    function openCropper(input) {
         if(!input.files[0]) return;
+        const file = input.files[0];
+        const url = URL.createObjectURL(file);
+        
+        document.getElementById('cropImage').src = url;
+        document.getElementById('cropModal').style.display = 'flex';
+        document.getElementById('dropdownMenu').style.display = 'none';
+
+        if(cropper) { cropper.destroy(); }
+        
+        // Modal açıldıktan sonra Cropper'ı başlat
+        setTimeout(() => {
+            const image = document.getElementById('cropImage');
+            cropper = new Cropper(image, {
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 0.8,
+                restore: false,
+                guides: true,
+                center: true,
+                highlight: false,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                toggleDragModeOnDblclick: false,
+            });
+        }, 150);
+        
+        input.value = ""; // Aynı dosyayı tekrar seçebilmek için sıfırla
+    }
+
+    function closeCropper() {
+        document.getElementById('cropModal').style.display = 'none';
+        if(cropper) { cropper.destroy(); cropper = null; }
+    }
+
+    // 2. Kırpılan alanı alıp Offline OCR'a gönder
+    async function doCropAndOCR() {
+        if(!cropper) return;
+        document.getElementById('cropModal').style.display = 'none';
+        
+        // Sadece kullanıcının kırptığı alanı al
+        const canvas = cropper.getCroppedCanvas();
+        const base64Image = canvas.toDataURL('image/jpeg');
+        
+        cropper.destroy(); cropper = null;
+
         document.getElementById('loader').style.display = 'flex';
-        document.getElementById('l-msg').innerText = 'Evrak Okunuyor...';
+        document.getElementById('l-msg').innerText = 'Evrak Okunuyor (Lütfen Bekleyin)...';
+
         try {
-            // YENİ SİSTEM: İnternete çıkmasını engelleyip yerel dosyaları gösteriyoruz
-            const worker = await Tesseract.createWorker('tur', 1, {
+            // Tesseract'ı %100 Çevrimdışı (Offline) çalışacak şekilde kuruyoruz
+            const worker = await Tesseract.createWorker({
                 workerPath: './worker.min.js',
                 corePath: './tesseract-core.wasm.js',
-                langPath: './' // tur.traineddata.gz dosyasının olduğu klasör (ana dizin)
+                langPath: './',
+                logger: m => console.log("OCR Durumu:", m.status, Math.round(m.progress * 100) + "%")
             });
+            
+            await worker.loadLanguage('tur');
+            await worker.initialize('tur');
 
-            const { data: { text } } = await worker.recognize(input.files[0]);
+            // Kırpılmış resmi okut
+            const { data: { text } } = await worker.recognize(base64Image);
+            console.log("Bulunan Metin:", text);
 
-            if (docType === 'kimlik') {
+            if (currentDocType === 'kimlik') {
                 const tcMatch = text.match(/\b[1-9][0-9]{10}\b/);
-                if(tcMatch) document.getElementById(`${vehicle}_tc`).value = tcMatch[0];
+                if(tcMatch) {
+                    document.getElementById(`${currentVehicle}_tc`).value = tcMatch[0];
+                    alert("TC Kimlik No Başarıyla Bulundu!");
+                } else {
+                    alert("TC Kimlik No bulunamadı. Lütfen daha net kırpın.");
+                }
             } else {
+                // Plaka formatı arama
                 const plateMatch = text.match(/\b[0-9]{2}\s?[A-Z]{1,3}\s?[0-9]{2,4}\b/);
-                if(plateMatch) document.getElementById(`${vehicle}_plaka`).value = plateMatch[0].replace(/\s/g, '').toUpperCase();
+                if(plateMatch) {
+                    document.getElementById(`${currentVehicle}_plaka`).value = plateMatch[0].replace(/\s/g, '').toUpperCase();
+                    alert("Plaka Başarıyla Bulundu!");
+                } else {
+                    alert("Plaka okunamadı. Lütfen sadece plakayı içerecek şekilde kırpın.");
+                }
             }
             
-            await worker.terminate(); // İşlem bitince belleği temizle ki telefon kasmasın
+            await worker.terminate(); // Belleği temizle
 
         } catch (e) { 
             console.error(e);
-            alert("Okuma başarısız. Hata: " + e.message); 
+            alert("Okuma başarısız oldu. Hata: " + e.message); 
         }
-        document.getElementById('loader').style.display = 'none'; input.value = "";
+        document.getElementById('loader').style.display = 'none';
     }
-
 
     // --- 1. KOORDİNAT BULUCU (IZGARA) MOTORU ---
     async function createGridPDF() {
@@ -984,8 +1056,13 @@
         document.getElementById('dropdownMenu').style.display = 'none';
         document.getElementById('krokiModal').style.display = 'flex';
         
+        // ZORLA TAM EKRAN (FULLSCREEN) MODU
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) { elem.requestFullscreen().catch(e => console.log(e)); }
+        else if (elem.webkitRequestFullscreen) { elem.webkitRequestFullscreen(); } // iOS/Safari
+        else if (elem.msRequestFullscreen) { elem.msRequestFullscreen(); } // Edge
+
         if (!krokiCanvas) {
-            // YENİ EKLENEN: preserveObjectStacking ile katman sırası kilitlenir (yollar hep altta kalır)
             krokiCanvas = new fabric.Canvas('fabricCanvas', { 
                 backgroundColor: '#ffffff', 
                 selection: true,
@@ -1201,6 +1278,10 @@
         
         document.getElementById('krokiModal').style.display = 'none';
         alert("Kroki başarıyla hazırlandı! Artık PDF İndir butonuna basabilirsiniz.");
+                // TAM EKRANDAN ÇIKIŞ
+        if (document.exitFullscreen) { document.exitFullscreen().catch(e => console.log(e)); }
+        else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
+        else if (document.msExitFullscreen) { document.msExitFullscreen(); }
     }
 
     // ==========================================
@@ -1480,7 +1561,7 @@
     <div id="krokiContent">
         
         <div class="kroki-header">
-            <button class="menu-btn" style="color:#FF3B30;" onclick="document.getElementById('krokiModal').style.display='none'"><i class="fas fa-times"></i></button>
+            <button class="menu-btn" style="color:#FF3B30;" onclick="document.getElementById('krokiModal').style.display='none'; if(document.exitFullscreen) document.exitFullscreen(); else if(document.webkitExitFullscreen) document.webkitExitFullscreen();"><i class="fas fa-times"></i></button>
             <span>Kroki Çizim Ekranı</span>
             <div style="position:relative;">
                 <button class="menu-btn" onclick="toggleKrokiMenu()"><i class="fas fa-ellipsis-v"></i></button>
@@ -1539,6 +1620,24 @@
             </button>
             <button onclick="executeShare()" style="padding:14px; background:#107C41; color:white; border:none; border-radius:10px; font-weight:bold; font-size: 14px; cursor:pointer;">
                 <i class="fas fa-share-alt"></i> WhatsApp / Diğer Paylaş
+            </button>
+        </div>
+    </div>
+</div>
+
+<!--kesme fotoğrafı-->
+<div id="cropModal" class="modal" style="z-index: 7000;">
+    <div class="modal-content" style="max-width: 95vw; height: 85vh; display:flex; flex-direction:column; background: #000;">
+        <div class="modal-header" style="background:#fff;">
+            Fotoğrafı Çerçeveye Ayarlayın
+            <button class="modal-close" onclick="closeCropper()"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="flex:1; overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center;">
+            <img id="cropImage" src="" style="max-width:100%; max-height:100%; display:block;">
+        </div>
+        <div style="padding: 15px; background:#fff; text-align:center;">
+            <button onclick="doCropAndOCR()" style="padding:15px; background:#107C41; color:white; border:none; border-radius:10px; font-weight:bold; font-size: 16px; width:100%; cursor:pointer;">
+                <i class="fas fa-crop-alt"></i> Kırp ve Okumayı Başlat
             </button>
         </div>
     </div>
