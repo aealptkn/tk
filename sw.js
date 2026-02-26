@@ -3,7 +3,7 @@ const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './all.min.css',
+  './css/all.min.css',
   './bos-tutanak.pdf',
   './fabric.min.js',
   './FileSaver.min.js',
