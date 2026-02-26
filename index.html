@@ -638,16 +638,17 @@
 
         if(cropper) { cropper.destroy(); cropper = null; }
         
-        // Resmin yolunu ver
+        // Resmi silip tekrar yüklüyoruz ki onload kesin tetiklensin
+        image.src = ''; 
         image.src = url; 
 
-        // KRİTİK NOKTA: Resim tarayıcıya tam yüklendikten sonra Cropper'ı kur
-        image.onload = function() {
+        // Cropper'ı başlatacak çekirdek fonksiyon
+        const initCropper = () => {
             cropper = new Cropper(image, {
-                viewMode: 1,      // Resmi dışarı taşırmaz
-                dragMode: 'move', // Resmi kaydırma modu
+                viewMode: 1,      
+                dragMode: 'move', // Resmi parmakla kaydır
                 autoCropArea: 0.8,
-                responsive: true, // Ekran boyutuna göre kendini ayarlar
+                responsive: true,
                 restore: false,
                 guides: true,
                 center: true,
@@ -655,12 +656,24 @@
                 cropBoxMovable: true,
                 cropBoxResizable: true,
                 toggleDragModeOnDblclick: false,
+                // Kırpma aracı tam oturduğunda konsola bilgi ver
+                ready: function () {
+                    console.log("Kırpma aracı ekrana yerleşti!");
+                }
             });
         };
+
+        // Eğer resim saniyeden kısa sürede yüklendiyse (veya önbellekteyse) hemen başlat
+        if (image.complete) {
+            initCropper();
+        } else {
+            // Değilse yüklenmesini bekle ve başlat
+            image.onload = initCropper;
+        }
         
         input.value = ""; // Aynı dosyayı tekrar seçebilmek için sıfırla
     }
-
+    
     function closeCropper() {
         document.getElementById('cropModal').style.display = 'none';
         if(cropper) { cropper.destroy(); cropper = null; }
