@@ -4,6 +4,8 @@ const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './css/all.min.css',
+  './css/cropper.min.css',
+  './cropper.min.js',
   './bos-tutanak.pdf',
   './fabric.min.js',
   './FileSaver.min.js',
