@@ -17,6 +17,9 @@ const ASSETS_TO_CACHE = [
   './logo192.png',
   './logo512.png'
 
+
+  // Eğer font-awesome'un webfonts klasörünü de indirdiysen buraya eklemelisin:
+  // './webfonts/fa-solid-900.woff2',vs.
 ];
 
 self.addEventListener('install', event => {

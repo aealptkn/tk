@@ -14,7 +14,6 @@
     <script src="./FileSaver.min.js"></script>
     <script src="./pdf-lib.min.js"></script>
     <script src="./fabric.min.js"></script>
-    
     <link rel="stylesheet" href="./css/all.min.css">
     
     <style>
@@ -40,11 +39,7 @@
         
         #sketchpad { border: 1px dashed var(--border); border-radius: 8px; width: 100%; height: 220px; background: #fafafa; touch-action: none; }
         .clear-canvas { margin-top: 8px; color: #FF3B30; background: none; border: none; font-size: 13px; font-weight: 600; cursor:pointer;}
-/*        
-        footer { padding: 12px; background: rgba(255,255,255,0.9); border-top: 0.5px solid var(--border); display: flex; gap: 10px; }
-        .btn-main { background: #107C41; color: white; border: none; flex: 2; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor:pointer;}
-        .btn-grid { background: #FF3B30; color: white; border: none; flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor:pointer;}
-*/        
+     
 /* --- KROKİ MODALI STİLLERİ --- */
     #krokiModal {
         display: none; position: fixed; inset: 0; background: #222; z-index: 3000;
@@ -195,6 +190,8 @@
 </header>
 
 <main>
+    
+    <div class="section-title">KAZA ZAMANI VE YERİ</div>
     <div class="card">
         <div class="row"><label>Tarih/Saat</label><input type="datetime-local" id="k_tarih"></div>
         <div class="row"><label>İl</label><input type="text" id="k_il" placeholder="İl"></div>
@@ -215,7 +212,9 @@
         <div class="row"><label>2. Tanık Adres</label><textarea id="g2_adres" rows="2" placeholder="Adres"></textarea></div>
     </div>
 
-      
+    <div class="section-title">ARAÇ A</div>
+    <div class="card">
+
     <div class="section-title">4- Sürücü Bilgileri</div>
         <div class="card">  
         <div class="row"><label>Adı Soyadı:</label><input type="text" id="A_ad" placeholder="Ad Soyad"></div>
@@ -311,6 +310,10 @@
         <div class="row"><label>Hız (km/s)</label><input type="number" id="A_hiz" placeholder="Hızınız"></div>
         <div class="row"><label>Fren İzi (m)</label><input type="number" id="A_fren" placeholder="Fren İzi"></div>        
     </div>    
+
+
+    <div class="section-title">ARAÇ B</div>
+    <div class="card">
 
     <div class="section-title">4- Sürücü Bilgileri</div>
         <div class="card">  
@@ -583,7 +586,6 @@
         const map = { 'ğ':'g', 'Ğ':'G', 'ş':'s', 'Ş':'S', 'ı':'i', 'İ':'I', 'ç':'c', 'Ç':'C', 'ö':'o', 'Ö':'O', 'ü':'u', 'Ü':'U' };
         return text.toString().replace(/[ğĞşŞıİçÇöÖüÜ]/g, letter => map[letter]);
     };
-
 
 
     // --- 1. KOORDİNAT BULUCU (IZGARA) MOTORU ---
@@ -928,13 +930,8 @@
         document.getElementById('dropdownMenu').style.display = 'none';
         document.getElementById('krokiModal').style.display = 'flex';
         
-        // ZORLA TAM EKRAN (FULLSCREEN) MODU
-        const elem = document.documentElement;
-        if (elem.requestFullscreen) { elem.requestFullscreen().catch(e => console.log(e)); }
-        else if (elem.webkitRequestFullscreen) { elem.webkitRequestFullscreen(); } // iOS/Safari
-        else if (elem.msRequestFullscreen) { elem.msRequestFullscreen(); } // Edge
-
         if (!krokiCanvas) {
+            // YENİ EKLENEN: preserveObjectStacking ile katman sırası kilitlenir (yollar hep altta kalır)
             krokiCanvas = new fabric.Canvas('fabricCanvas', { 
                 backgroundColor: '#ffffff', 
                 selection: true,
@@ -1150,10 +1147,6 @@
         
         document.getElementById('krokiModal').style.display = 'none';
         alert("Kroki başarıyla hazırlandı! Artık PDF İndir butonuna basabilirsiniz.");
-                // TAM EKRANDAN ÇIKIŞ
-        if (document.exitFullscreen) { document.exitFullscreen().catch(e => console.log(e)); }
-        else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
-        else if (document.msExitFullscreen) { document.msExitFullscreen(); }
     }
 
     // ==========================================
@@ -1404,30 +1397,21 @@
         }, 2500); // 2.5 saniye ekranda kalır
     });
 
-    // PWA Service Worker Kaydı ve TEK SEFERLİK Offline Mesajı
+    // PWA Service Worker Kaydı ve Offline Mesajı
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
                     console.log('ServiceWorker başarıyla kaydedildi: ', registration.scope);
                     
-                    // Mesajın daha önce gösterilip gösterilmediğini kontrol et
-                    if (!localStorage.getItem('offlineMesajGosterildi')) {
-                        
-                        // ÖNEMLİ: Animasyonu beklemeden HEMEN hafızaya yaz!
-                        // Böylece kullanıcı anında sayfayı yenilese bile bir daha çıkmaz.
-                        localStorage.setItem('offlineMesajGosterildi', 'true');
-                        
-                        const toast = document.getElementById('offline-toast');
+                    // Offline mesajını göster
+                    const toast = document.getElementById('offline-toast');
+                    setTimeout(() => {
+                        toast.style.bottom = '20px'; // Mesajı yukarı kaydır
                         setTimeout(() => {
-                            toast.style.bottom = '20px'; // Mesajı yukarı kaydır
-                            
-                            setTimeout(() => {
-                                toast.style.bottom = '-50px'; // 4 saniye sonra geri sakla
-                            }, 4000);
-                            
-                        }, 3500); // İntro bittikten sonra çıkar
-                    }
+                            toast.style.bottom = '-50px'; // 4 saniye sonra geri sakla
+                        }, 4000);
+                    }, 3500); // İntro bittikten sonra çıkar
                 })
                 .catch(err => {
                     console.log('ServiceWorker kaydı başarısız oldu: ', err);
@@ -1442,7 +1426,7 @@
     <div id="krokiContent">
         
         <div class="kroki-header">
-            <button class="menu-btn" style="color:#FF3B30;" onclick="document.getElementById('krokiModal').style.display='none'; if(document.exitFullscreen) document.exitFullscreen(); else if(document.webkitExitFullscreen) document.webkitExitFullscreen();"><i class="fas fa-times"></i></button>
+            <button class="menu-btn" style="color:#FF3B30;" onclick="document.getElementById('krokiModal').style.display='none'"><i class="fas fa-times"></i></button>
             <span>Kroki Çizim Ekranı</span>
             <div style="position:relative;">
                 <button class="menu-btn" onclick="toggleKrokiMenu()"><i class="fas fa-ellipsis-v"></i></button>
@@ -1505,10 +1489,6 @@
         </div>
     </div>
 </div>
-
-
-
-
 
 </body>
 </html>
